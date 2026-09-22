@@ -1,0 +1,43 @@
+# Defaults shared by every run. Objective configs in objectives/ are merged on top.
+seed: 0
+
+data:
+  source: synthetic          # synthetic | casas
+  synthetic:
+    n_homes: 10
+    days: 14
+    held_out_homes: 2        # leave-homes-out evaluation
+  casas:
+    homes: []                # - {home_id: milan, data: data/raw/casas/milan/data, sensor_map: .../sensor_map.json}
+    held_out: []
+  concepts: null             # null = ontology defaults (homefm.schema.ontology.DEFAULT_CONCEPTS)
+  span_s: 3600               # window length
+  moment_s: 60               # moment length (DESIGN.md §7.2)
+  stride_s: 900              # training window stride
+  max_events: 768
+
+text_encoder:
+  kind: hashing              # hashing (offline, tests) | sentence_transformer
+  dim: 256
+  # model_name: sentence-transformers/all-MiniLM-L6-v2
+
+model:                       # "tiny" scaffold size; teacher/student sizes in DESIGN.md §7.3
+  d_model: 128
+  n_heads: 4
+  n_latents: 4
+  n_stream_layers: 4
+  n_readout_layers: 2
+  dropout: 0.1
+  n_mixture: 8
+
+train:
+  batch_size: 16
+  steps: 2000
+  lr: 3.0e-4
+  weight_decay: 0.05
+  warmup_steps: 100
+  grad_clip: 1.0
+  log_every: 100
+  device: auto               # auto | cpu | cuda
+  num_workers: 0
+  out_dir: runs

@@ -1,0 +1,29 @@
+# Corpus-scale overlay for configs/domusfm.yaml: pretrain ONCE on every labelled CASAS home except the
+# 7 evaluation targets (plus Milan and Aruba), then fine-tune/test on each target. Stricter than
+# leave-one-dataset-out: no target data is ever seen in pretraining.
+out_dir: runs/domusfm_corpus
+pretrain_mode: shared
+held_out: [uci_b, hh101, hh103, hh105, hh110, hh119, hh122]
+ablation_no_pretrain: true
+datasets:
+  source: list
+  cache_dir: data/cache/casas
+  list:
+    - {kind: uci_adl, id: uci_b, path: "data/raw/uci/UCI ADL Binary Dataset", home: B}
+    - {kind: casas_fast, id: hh101, path: data/raw/casas/labeled/hh101.csv}
+    - {kind: casas_fast, id: hh103, path: data/raw/casas/labeled/hh103.csv}
+    - {kind: casas_fast, id: hh105, path: data/raw/casas/labeled/hh105.csv}
+    - {kind: casas_fast, id: hh110, path: data/raw/casas/labeled/hh110.csv}
+    - {kind: casas_fast, id: hh119, path: data/raw/casas/labeled/hh119.csv}
+    - {kind: casas_fast, id: hh122, path: data/raw/casas/labeled/hh122.csv}
+    - {kind: casas_fast_glob, path: "data/raw/casas/labeled/*.csv", pretrain_only: true}
+    - {kind: casas_fast, id: milan, path: data/raw/casas/data/milan.csv, pretrain_only: true}
+    - {kind: casas_fast, id: aruba, path: data/raw/casas/data/aruba.csv, pretrain_only: true}
+pretrain:
+  steps_phase1: 20000
+  steps_phase2: 20000
+  log_every: 1000
+finetune:
+  tasks: [adl, next30]
+  train_pcts: [0.05, 0.30]
+  folds: 3

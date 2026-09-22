@@ -1,0 +1,8 @@
+# A: DomusFM-style dual contrastive baseline (attribute masking → event masking, InfoNCE)
+objective:
+  name: contrastive
+  run_name: A_contrastive
+  attr_mask_p: 0.3
+  event_mask_p: 0.15
+  temperature: 0.1
+  stage_switch: 0.5          # fraction of training spent in stage 1; embedder frozen afterwards

@@ -1,0 +1,7 @@
+# C: structured latent prediction (JEPA, EMA target encoder)
+objective:
+  name: latent_mask
+  run_name: C_latent_mask
+  ema: 0.996
+  block_moments: [5, 15]
+  mask_weights: {time_block: 0.4, entity: 0.2, room: 0.2, modality: 0.1, info_weighted: 0.1}

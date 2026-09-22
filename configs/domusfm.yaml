@@ -1,0 +1,52 @@
+# DomusFM reproduction (docs/DOMUSFM_REPRODUCTION.md). Values from the paper are marked [paper];
+# everything else is an assumption because the paper does not report it.
+seed: 0
+device: auto
+out_dir: runs/domusfm
+
+datasets:
+  source: synthetic            # synthetic | casas
+  synthetic: {n: 7, days: 14}  # 7 simulated homes stand in for the paper's 7 datasets until real data is in place
+  casas: []                    # - {home_id: milan, data: data/raw/casas/milan/data, sensor_map: data/raw/casas/milan/sensor_map.json}
+
+held_out: null                 # null = every dataset in turn (leave-one-dataset-out) [paper]
+ablation_no_pretrain: true     # §6.7.2 ablation
+
+text_encoder:
+  kind: sentence_transformer
+  model_name: sentence-transformers/all-MiniLM-L6-v2   # [paper]
+
+model:
+  d: 384                       # [paper]
+  n_layers: 12                 # [paper]
+  n_heads: 12                  # [paper]
+  ff: 2048
+  attr_heads: 4
+  n_harmonics: 4
+  dropout: 0.1
+
+window: 30                     # [paper] events per window, sliding by one event
+
+pretrain:
+  stride: 1                    # [paper] overlap of 29 events
+  batch_size: 128
+  steps_phase1: 3000           # attribute-level contrastive
+  steps_phase2: 3000           # event-level contrastive, event extractor frozen [paper]
+  lr: 1.0e-4
+  weight_decay: 0.01
+  attr_mask_p: 0.15
+  event_mask_p: 0.15
+  temperature: 0.07
+  log_every: 500
+
+finetune:
+  tasks: [adl, next10, next30] # [paper]
+  train_pcts: [0.05, 0.10, 0.15, 0.30]  # [paper]
+  folds: 5                     # [paper]
+  fold_mode: contiguous        # contiguous (no leakage) | random (likely the paper; overlapping windows leak)
+  epochs: 10                   # [paper], no early stopping
+  batch_size: 64
+  eval_batch_size: 512
+  lr: 1.0e-4
+  weight_decay: 0.01
+  max_test_windows: 20000      # subsample test windows for speed; null = all

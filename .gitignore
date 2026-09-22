@@ -1,0 +1,11 @@
+__pycache__/
+*.egg-info/
+.venv/
+.pytest_cache/
+runs/
+data/raw/*
+!data/raw/.gitkeep
+*.pt
+data/cache/
+# third-party paper (arXiv licence does not permit redistribution); cite arXiv:2602.01910 instead
+Domus/*.pdf

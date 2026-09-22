@@ -1,0 +1,13 @@
+# F: E + language alignment (SigLIP) + home-adversarial invariance
+objective:
+  name: composite
+  run_name: F_full
+  parts:
+    - {name: next_event, weight: 1.0, value_weight: 1.0}
+    - name: latent_mask
+      weight: 1.0
+      ema: 0.996
+      block_moments: [5, 15]
+      mask_weights: {time_block: 0.4, entity: 0.2, room: 0.2, modality: 0.1, info_weighted: 0.1}
+    - {name: language, weight: 0.5}
+    - {name: home_adv, weight: 0.1, lam: 0.1}

@@ -1,0 +1,17 @@
+# Real-data overlay for configs/domusfm.yaml (docs/DOMUSFM_REPRODUCTION.md §Datasets).
+# 7 held-out targets like the paper: UCI Home B (paper dataset) + 6 labelled CASAS homes standing in for
+# Kasteren A/C, Orange4Home and MuRAL (not downloaded). CASAS Milan and Aruba (paper datasets) are
+# unlabelled in the 2025 Zenodo release, so they are used for pretraining only.
+out_dir: runs/domusfm_real
+datasets:
+  source: list
+  list:
+    - {kind: uci_adl, id: uci_b, path: "data/raw/uci/UCI ADL Binary Dataset", home: B}
+    - {kind: casas_zenodo, id: hh101, path: data/raw/casas/labeled/hh101.csv}
+    - {kind: casas_zenodo, id: hh103, path: data/raw/casas/labeled/hh103.csv}
+    - {kind: casas_zenodo, id: hh105, path: data/raw/casas/labeled/hh105.csv}
+    - {kind: casas_zenodo, id: hh110, path: data/raw/casas/labeled/hh110.csv}
+    - {kind: casas_zenodo, id: hh119, path: data/raw/casas/labeled/hh119.csv}
+    - {kind: casas_zenodo, id: hh122, path: data/raw/casas/labeled/hh122.csv}
+    - {kind: casas_zenodo, id: milan, path: data/raw/casas/data/milan.csv, pretrain_only: true}
+    - {kind: casas_zenodo, id: aruba, path: data/raw/casas/data/aruba.csv, pretrain_only: true}

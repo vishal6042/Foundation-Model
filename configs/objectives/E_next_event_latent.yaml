@@ -1,0 +1,11 @@
+# E (proposed): D + C
+objective:
+  name: composite
+  run_name: E_next_event_latent
+  parts:
+    - {name: next_event, weight: 1.0, value_weight: 1.0}
+    - name: latent_mask
+      weight: 1.0
+      ema: 0.996
+      block_moments: [5, 15]
+      mask_weights: {time_block: 0.4, entity: 0.2, room: 0.2, modality: 0.1, info_weighted: 0.1}

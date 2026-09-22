@@ -1,0 +1,5 @@
+# D: causal next-event prediction (marked temporal point process: what · state/value · when)
+objective:
+  name: next_event
+  run_name: D_next_event
+  value_weight: 1.0

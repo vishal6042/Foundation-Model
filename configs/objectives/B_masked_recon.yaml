@@ -1,0 +1,6 @@
+# B: BERT-style random event masking + reconstruction of entity / state / value
+objective:
+  name: masked_recon
+  run_name: B_masked_recon
+  mask_p: 0.15
+  value_weight: 1.0
