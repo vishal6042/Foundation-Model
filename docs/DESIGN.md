@@ -130,33 +130,59 @@ Domains are open-ended; question **types** are a small, closed set. Every type m
 
 ### 4.1 Limitations of DomusFM against our requirements, with scenarios
 
-Each limitation below is tied to where the paper states it or where it follows from the design, a concrete user question that it breaks, what goes wrong, and how HomeFM addresses it.
+**In one picture:** DomusFM is like a guard who watches only on/off lights, remembers the last 30 blinks, assumes one person lives in the house, and can only name activities it was shown examples of. HomeFM aims to be a guard who also reads meters, hears and sees (through on-device detectors), remembers weeks, knows who is who, and understands plain words.
+
+For each limitation below:
+
+- **In simple words:** the problem without jargon.
+- **In the paper:** where the paper states it, or where it follows from the design.
+- **Example:** a real user question that breaks.
+- **What goes wrong:** the concrete failure.
+- **How HomeFM fixes it:** the design response, with a pointer to the section.
+
+**Summary**
+
+| # | DomusFM limitation | In one line | HomeFM fix |
+|---|---|---|---|
+| L1 | Closed label set | Can only name activities that already have labelled examples | Link sensor patterns to words, so any concept can be asked about |
+| L2 | Binary events only | Sees "fridge ON", not "fridge draws 180 W" | Keep real numbers as input |
+| L3 | Fixed 30-event window | Its memory is sometimes 2 minutes, sometimes 6 hours, never weeks | Fixed 1-minute steps, hours of context, daily summaries for weeks |
+| L4 | Single occupant | Cannot tell people apart, count them, or tell a person from a pet | Person cards per resident and pet, per-room people count |
+| L5 | One label per window | Cannot count "cooked 3 times" or see two things at once | Start/end detection, several tags at once, counting rules per activity |
+| L6 | No anomaly or device health | Cannot say "this is unusual" or "this sensor is broken" | Surprise score, anomaly engine, device-health engine |
+| L7 | Forecast without timing | Knows what comes next, not when | Also predicts how long until the next event |
+| L8 | Not searchable by text | Its knowledge cannot be searched with words | Minute summaries stored in the same space as text |
+| L9 | No audio or vision | Cannot hear a baby cry or see a parcel | On-device sound and camera detectors feed in events |
+| L10 | Small, old training data | Never saw smart locks, cameras or robot vacuums | Many more homes, simulated homes, pilot homes |
+| L11 | Weak training game | Learns sensor quirks instead of behaviour | New four-stage pretraining recipe (§8) |
 
 ```mermaid
 flowchart LR
     subgraph DFM["DomusFM limitation"]
-        L1["Fixed labels"]
-        L2["Binary events only"]
-        L3["30-event window"]
-        L4["Single occupant"]
-        L5["Window labels, no episodes"]
-        L6["No likelihood / anomaly"]
-        L7["Forecast without timing"]
-        L8["No text alignment"]
-        L9["Small pretraining corpus"]
-        L10["Contrastive masking only"]
+        L1["L1 Closed label set"]
+        L2["L2 Binary events only"]
+        L3["L3 30-event window"]
+        L4["L4 Single occupant"]
+        L5["L5 Window labels, no episodes"]
+        L6["L6 No likelihood / anomaly"]
+        L7["L7 Forecast without timing"]
+        L8["L8 No text alignment"]
+        L9["L9 No audio / vision"]
+        L10["L10 Small pretraining corpus"]
+        L11["L11 Contrastive masking only"]
     end
     subgraph HFM["HomeFM response"]
         R1["Language-aligned tagger (§8.2 S3)"]
-        R2["Scalar patches + expert tokens (§7.2)"]
+        R2["Scalar value tokens (§7.2)"]
         R3["Time-based moments + stream + daily memory (§7.2)"]
-        R4["Occupant slots + occupancy head (§7.2)"]
+        R4["Occupant slots + occupancy head (§9.4)"]
         R5["Boundary head + episode rules (§9.1)"]
-        R6["Next-event NLL + anomaly engine (§9.2)"]
+        R6["Next-event NLL + anomaly / device-health engines (§9.2–9.3)"]
         R7["Δt log-normal mixture head (§8.2 S1)"]
-        R8["SigLIP retrieval embeddings (§8.2 S3)"]
-        R9["Synthetic homes + pilots (§11)"]
-        R10["Causal TPP + JEPA structured masks (§8)"]
+        R8["SigLIP retrieval embeddings (§10.1)"]
+        R9["Edge audio / vision experts as Home Tokens (§5)"]
+        R10["Broader data + synthetic homes + pilots (§11)"]
+        R11["Causal next-event + JEPA structured masks (§8)"]
     end
     L1 --> R1
     L2 --> R2
@@ -168,88 +194,111 @@ flowchart LR
     L8 --> R8
     L9 --> R9
     L10 --> R10
+    L11 --> R11
 ```
 
 #### L1 · Closed label set, no zero-shot (R1)
 
-- **In the paper:** §7.4.3 states DomusFM "does not yet operate in a zero-shot fashion". Every activity-recognition result fine-tunes a linear head on 5–30 % of the target dataset's labels (§6.1.3, §6.4.3).
-- **Where the labels come from:** the paper does no labelling of its own, and pretraining is label-free. The labels used for fine-tuning are the human-made activity annotations that ship with the public datasets. So DomusFM *learns* without labels, but it can only *name* an activity that already has labelled examples.
-- **Scenario:** *"How many times did someone vacuum today?"* None of the public datasets has a "vacuuming" annotation, and this home has never labelled it.
-- **What goes wrong:** there is no output for "vacuuming". Pretraining may group vacuuming-like moments together (the paper's clustering task needs no labels), but the group has no name and cannot be queried by the word "vacuuming". To add it as a class, someone must first provide labelled examples. 5 % of a CASAS dataset is still days of annotated activity, which a household will not provide for every new question.
+- **In simple words:** DomusFM learns patterns on its own, but it can only put a *name* on an activity if it has been shown labelled examples of that activity. A new idea like "vacuuming" has no name in the model until someone provides examples.
+- **In the paper:** §7.4.3 states DomusFM "does not yet operate in a zero-shot fashion" (zero-shot means recognising something with no labelled examples). Every activity-recognition result fine-tunes a linear head on 5–30 % of the target dataset's labels (§6.1.3, §6.4.3).
+- **Where the labels come from:** the paper does no labelling of its own, and pretraining is label-free. The labels used for fine-tuning are the human-made activity annotations that ship with the public datasets (CASAS, UCI, …). So DomusFM *learns* without labels, but it can only *name* an activity that already has labelled examples.
+- **Example:** *"How many times did someone vacuum today?"* None of the public datasets has a "vacuuming" annotation, and this home has never labelled it.
+- **What goes wrong:** there is no output for "vacuuming". Pretraining may group vacuuming-like moments together (the paper's clustering task needs no labels), but the group has no name and cannot be found by the word "vacuuming". To add it as a class, someone must first provide labelled examples. 5 % of a CASAS dataset is still days of annotated activity, which a household will not provide for every new question.
 - **Same failure:** "guest visit", "kids doing homework", "Dad took medicine", any concept the user invents.
-- **HomeFM:** moment and episode embeddings are aligned with text (SigLIP), so a new concept is scored against its text embedding with no labels. Labels are used to improve accuracy, not to make a concept exist.
+- **How HomeFM fixes it:** each minute's summary is trained to sit close to text that describes it (SigLIP alignment, §8.2 Stage 3). A cooking minute lands near the words "someone is cooking". A new concept is then found by comparing minutes with its text, with no labels. Labels are still useful, but to improve accuracy, not to make a concept exist.
 
 #### L2 · Binary events only; continuous data must be binarised (R2, R6)
 
+- **In simple words:** DomusFM only understands on and off. Meters that report amounts (power, temperature, humidity) have to be squashed into on/off first, and the amount is thrown away.
 - **In the paper:** §3.1 and §7.4.2 require continuous streams to be discretised into ON/OFF "virtual events" by pre-processing, and acknowledge possible information loss.
-- **Scenario A:** *"How much energy did we use in the last hour?"* ON/OFF events for the kettle, oven and heater carry no kWh, so the answer cannot come from the model's input.
-- **Scenario B:** *"Is my fridge OK?"* A failing compressor runs 25 min per cycle instead of 12 and draws 20 % more power. After binarisation, both look like `fridge ON … fridge OFF`. Only the gap between events changes slightly, and the power level is gone.
-- **Scenario C:** bathroom humidity turned into `shower ON/OFF` needs a threshold tuned per bathroom and season. A wrong threshold silently creates or deletes showers.
-- **HomeFM:** scalar values enter as value tokens (change-triggered patches), so amplitude, duty cycle and trend are kept. Device-health and energy reasoning read the real signal.
+- **Example A:** *"How much energy did we use in the last hour?"* ON/OFF events for the kettle, oven and heater carry no kWh, so the answer cannot come from the model's input.
+- **Example B:** *"Is my fridge OK?"* A failing compressor runs 25 min per cycle instead of 12 and draws 20 % more power. After binarisation both look like `fridge ON … fridge OFF`. Only the gap between events changes slightly, and the power level is gone.
+- **Example C:** bathroom humidity turned into `shower ON/OFF` needs a threshold tuned per bathroom and season. A wrong threshold silently creates or deletes showers.
+- **What goes wrong:** energy questions cannot be answered, slow device faults are invisible, and hand-tuned thresholds add hidden errors.
+- **How HomeFM fixes it:** numbers enter the model as numbers (value tokens, sent when the value changes), so 1,800 W stays 1,800 W. Level, on/off rhythm and trend are all kept, and energy and device-health reasoning read the real signal (§7.0 step 1, §7.2).
 
 #### L3 · Fixed 30-event window (R3)
 
+- **In simple words:** DomusFM always looks at exactly the last 30 events. How much time that covers depends on how busy the home is: minutes when busy, hours when quiet, and never days or weeks.
 - **In the paper:** §6.2 uses event-based windows of 30 events. §7.2 notes that the time covered by a fixed number of events varies widely across datasets, and performance drops in a 5-minute time-based variant.
-- **Scenario A:** *"How many times did cooking happen in the last 4 hours?"* In a busy kitchen, 30 events can be about 2 minutes, so a 40-minute cooking session spans many windows and no single window sees its start and end.
-- **Scenario B:** at night, 30 events can cover 6 hours, so one window mixes sleeping, a bathroom trip and an early breakfast.
-- **Scenario C:** *"Is Mum sleeping worse than last month?"* or *"Is the fridge degrading?"* need days to weeks of context. A 30-event window cannot see a trend.
-- **HomeFM:** fixed-duration moments give a consistent time axis. The stream model covers hours with a streaming state, and daily summary tokens cover weeks.
+- **Example A:** *"How many times did cooking happen in the last 4 hours?"* In a busy kitchen 30 events can be about 2 minutes, so a 40-minute cooking session spans many windows and no single window sees its start and end.
+- **Example B:** at night, 30 events can cover 6 hours, so one window mixes sleeping, a bathroom trip and an early breakfast.
+- **Example C:** *"Is Mum sleeping worse than last month?"* or *"Is the fridge degrading?"* need days to weeks of context. A 30-event window cannot see a trend.
+- **What goes wrong:** long activities are cut into pieces, quiet periods are blurred together, and slow changes are invisible.
+- **How HomeFM fixes it:** time is cut into fixed 1-minute slots, so "the last 4 hours" always means 240 steps whether the home is busy or quiet. A stream model reads hours of minutes in order, and daily summaries cover weeks (§7.0 steps 3–5).
 
 #### L4 · Single occupant / perfect data association (R4)
 
+- **In simple words:** DomusFM assumes one person lives in the home, or that someone has already told it who caused each event. A motion sensor fires the same way for grandma, her grandson or the dog.
 - **In the paper:** §7.4.1 assumes single occupancy or that each event is already attributed to a person, and calls multi-occupant association an open challenge.
-- **Scenario A:** *"How many people are in the living room?"* A PIR sensor fires the same way for one or four people. DomusFM has no occupancy output and no notion of "who".
-- **Scenario B:** *"Did grandma eat lunch?"* while her grandson cooks at noon. Kitchen events are attributed to "the resident", so grandma's missed meal is hidden.
-- **Scenario C:** the dog walks through the hallway at 2 am. Without a pet/person distinction, this looks like an elderly person wandering at night: either a false alarm, or the real wandering is learned as normal.
-- **Scenario D:** *"Did we have guests?"* Guests are mostly visible as more people than residents, which a single-occupant model cannot represent.
-- **HomeFM:** a per-room occupancy head, occupant slots per resident and pet, and identity-bearing tokens (camera person counts, phone presence, radar) where the household allows them.
+- **Example A:** *"How many people are in the living room?"* A PIR sensor fires the same way for one or four people. DomusFM has no occupancy output and no notion of "who".
+- **Example B:** *"Did grandma eat lunch?"* while her grandson cooks at noon. Kitchen events are attributed to "the resident", so grandma's missed meal is hidden.
+- **Example C:** the dog walks through the hallway at 2 am. Without a pet/person distinction this looks like an elderly person wandering at night: either a false alarm, or real wandering is learned as normal.
+- **Example D:** *"Did we have guests?"* Guests mostly show up as more people than residents, which a single-occupant model cannot represent.
+- **What goes wrong:** counts of people, per-person care questions and guest detection are impossible, and pets cause false alarms.
+- **How HomeFM fixes it:** a "person card" (occupant slot) per resident and pet that events are assigned to, a per-room people count, and signals that carry identity (camera person counts, phone presence, radar) where the household allows them. With motion sensors only, it gives a calibrated range instead of a falsely confident number (§7.0, §9.4).
 
 #### L5 · One label per window, no episode boundaries (R5)
 
+- **In simple words:** DomusFM puts one activity label on each moment, but never says where an activity *starts* and *ends*. Counting "how many times" needs those start and end points, and a single label cannot show two things happening at once.
 - **In the paper:** §6.4.1 classifies the activity at the last event of each window, with a stride of one event. The output is a per-event label sequence, not a list of occurrences.
-- **Scenario:** *"How many times did cooking happen today?"* The model emits thousands of per-event labels, which have to be turned into episodes with no learned boundaries. A two-minute gap while stirring splits one cooking session into three. Brief "Other" labels in between (§6.1.1) fragment episodes further.
-- **Scenario (interleaved):** cooking while the baby cries. A single-label window must pick one, so one of the two counts is wrong.
-- **HomeFM:** multi-label, per-moment tagging (activities can overlap), a boundary head, and per-concept merge and min-duration rules in the ontology. Counts are computed from episodes, not windows.
+- **Example:** *"How many times did cooking happen today?"* The model emits thousands of per-event labels, which have to be turned into episodes with no learned boundaries. A two-minute gap while stirring splits one cooking session into three. Brief "Other" labels in between (§6.1.1) fragment episodes further.
+- **Example (overlapping):** cooking while the baby cries. A single-label window must pick one, so one of the two counts is wrong.
+- **What goes wrong:** counts and durations are unreliable, and overlapping activities are lost.
+- **How HomeFM fixes it:** several tags per minute (activities can overlap), a head that marks starts and ends, and per-activity rules in the ontology, for example "cries less than 60 s apart count as one" and "drop anything shorter than the minimum duration". Counts are computed from these episodes, not from windows (§9.1).
 
 #### L6 · No likelihood, anomaly or device-health output (R6)
 
+- **In simple words:** DomusFM can describe what is happening, but it cannot say *how unusual* it is for this home, and it has no idea when a sensor or appliance is broken.
 - **In the paper:** §7.4.4 lists anomaly detection, behaviour-change detection and occupancy prediction as future work. The contrastive objective yields embeddings, not probabilities.
-- **Scenario A:** *"Anything unusual last night?"* The front door opened at 03:12. DomusFM can embed that window but cannot say how improbable it is *for this home*.
-- **Scenario B:** a PIR sensor stuck ON after a battery fault produces a regular stream of events. Contrastive embeddings have no notion that the sensor is broken; the model may treat it as someone present.
-- **Scenario C:** *"Is Dad's routine changing?"* Three night bathroom trips instead of one, week after week, is an early health signal that needs a per-person baseline and a drift score.
-- **HomeFM:** causal next-event prediction gives −log p(event | history) as a surprise score. The anomaly engine combines it with embedding rarity and routine drift; the device-health engine models each entity's own signal history.
+- **Example A:** *"Anything unusual last night?"* The front door opened at 03:12. DomusFM can embed that window but cannot say how improbable it is *for this home*.
+- **Example B:** a PIR sensor stuck ON after a battery fault produces a regular stream of events. The model has no notion that the sensor is broken and may treat it as someone present.
+- **Example C:** *"Is Dad's routine changing?"* Three night bathroom trips instead of one, week after week, is an early health signal that needs a per-person baseline and a drift score.
+- **What goes wrong:** no security alerts, no fault detection, and no early warning of changing routines.
+- **How HomeFM fixes it:** the model learns to predict the next event, so it can measure *surprise*: how unlikely the thing that just happened was (−log p(event | history)). The anomaly engine combines surprise with rarity and routine drift and always explains its flags. The device-health engine compares each device with its own past and with the same device type in other homes (§9.2, §9.3).
 
 #### L7 · Forecasting without timing (R7)
 
+- **In simple words:** DomusFM can guess *which* events are likely soon, but not *when*, or in what order.
 - **In the paper:** §6.5.1 predicts the unordered bag of the next k events, deliberately ignoring order and timestamps. The 5-minute variant in §7.2 performs slightly worse.
-- **Scenario:** *"Will Dad be up soon? I want the coffee machine ready."* The model can say bedroom and bathroom events are likely among the next 30, but not whether they come in 5 minutes or 3 hours.
-- **Scenario:** a missing event, e.g. no kitchen activity by 11:00 when breakfast normally happens by 9:00. Detecting that needs a timed expectation, which a bag of events does not provide.
-- **HomeFM:** the next-event head predicts what, value and **when** (log-normal mixture over Δt), so expected-by deadlines and missed routines can be checked.
+- **Example:** *"Will Dad be up soon? I want the coffee machine ready."* The model can say bedroom and bathroom events are likely among the next 30, but not whether they come in 5 minutes or 3 hours.
+- **Example (missing event):** no kitchen activity by 11:00 when breakfast normally happens by 9:00. Detecting that needs a timed expectation, which a bag of events does not provide.
+- **What goes wrong:** no useful "when" predictions, and missed routines (skipped meals, missed medicine) cannot be detected.
+- **How HomeFM fixes it:** the next-event head predicts which device, what value **and how long until it happens** (a log-normal mixture over Δt). "Expected by" deadlines and missed routines can then be checked (§8.2 Stage 1).
 
 #### L8 · Embeddings not searchable by text (R10)
 
+- **In simple words:** DomusFM stores what it learned as lists of numbers (embeddings) that are not connected to language. You cannot type a question and find matching moments.
 - **In the paper:** embeddings are trained by contrasting views of event windows; they are not aligned with language.
-- **Scenario:** *"When did someone come home late this week?"* or *"Show me the evening the kitchen was busy for hours."* The query agent has text; DomusFM embeddings live in a different space, so there is nothing to search against.
-- **HomeFM:** a shared text–moment embedding space backs the agent's `semantic_search` tool (open path, §5.1).
+- **Example:** *"When did someone come home late this week?"* or *"Show me the evening the kitchen was busy for hours."* The query agent has text, and DomusFM embeddings live in a different space, so there is nothing to search against.
+- **What goes wrong:** open-ended and summary questions cannot use the model at all.
+- **How HomeFM fixes it:** minute summaries are stored in the same space as text, so the agent's `semantic_search` tool turns a question into a vector and finds the closest minutes (open path, §5.1, §10.1).
 
 #### L9 · Missing modalities: audio and vision are out of scope (R2)
 
+- **In simple words:** DomusFM cannot hear or see. Anything that makes no sensor switch flip is invisible to it.
 - **In the paper:** inputs are events from binary sensors and binarised continuous sensors (§3.1). Audio and camera events are not considered.
-- **Scenario A:** *"How many times did my kid cry?"* or *"Did the dog bark while we were out?"* Crying and barking produce no binary sensor event, so the answer is invisible.
-- **Scenario B:** *"How many parcels did we receive yesterday?"* A door contact shows the door opened. Whether a parcel was left, a guest arrived or someone went out needs a camera detection.
-- **HomeFM:** audio and vision experts run on the device and emit tags and embeddings as Home Tokens (with confidence), which HomeFM combines with the sensor stream.
+- **Example A:** *"How many times did my kid cry?"* or *"Did the dog bark while we were out?"* Crying and barking produce no binary sensor event.
+- **Example B:** *"How many parcels did we receive yesterday?"* A door contact shows the door opened. Whether a parcel was left, a guest arrived or someone went out needs a camera detection.
+- **What goes wrong:** whole question domains (childcare, pets, deliveries) cannot be answered.
+- **How HomeFM fixes it:** audio and vision detectors run on the home hub and send only tags and embeddings, with a confidence, in the same event format (Home Tokens). HomeFM combines them with the sensor stream. Raw audio and video never leave the home (§5, §13).
 
 #### L10 · Small, homogeneous pretraining corpus
 
-- **In the paper:** pretraining uses six of seven public datasets (§5), mostly single-resident homes with older binary sensor setups. §6.2.1 sizes the model to this small corpus.
-- **Scenario:** a new home with Matter plugs, a doorbell camera, a smart lock, a robot vacuum and 150 entities. Many device types (lock, camera, vacuum, air purifier) never appear in pretraining, so transfer to them rests entirely on the text encoder's prior knowledge.
-- **HomeFM:** broader pretraining data (§11): more CASAS homes, energy datasets, synthetic multi-occupant homes with injected faults, and pilot homes, plus teacher–student distillation.
+- **In simple words:** DomusFM learned from a few public datasets, mostly single-person homes with older binary sensors. It has never seen many of the devices in a modern smart home.
+- **In the paper:** pretraining uses six of seven public datasets (§5). §6.2.1 sizes the model to this small corpus.
+- **Example:** a new home with Matter plugs, a doorbell camera, a smart lock, a robot vacuum and 150 devices. Locks, cameras, vacuums and air purifiers never appear in pretraining.
+- **What goes wrong:** understanding of these devices rests entirely on the text description of the device ("smart lock, front door"), with no practice data behind it.
+- **How HomeFM fixes it:** broader pretraining data (§11): more CASAS homes, energy datasets, simulated multi-person homes with faults added on purpose, and real pilot homes. A large teacher model trained on a server passes its knowledge to a small student that runs on the hub (§7.3).
 
 #### L11 · Pretraining objective (see §8.1)
 
+- **In simple words:** DomusFM's self-training game ("is this the same window with a few events hidden?") is too easy on home data. The model wins it by learning how sensors behave rather than what people do.
 - **In the paper:** §4.3 uses masking only as augmentation for in-batch InfoNCE.
-- **Scenario:** two windows of a resident sleeping on different nights land in the same batch and are pushed apart as negatives, although they are the same behaviour. Masking a single PIR event is trivially recoverable from its paired ON/OFF, so the attribute-masking stage mostly learns sensor mechanics.
-- **HomeFM:** causal next-event prediction plus structured latent masking (JEPA), with SigLIP for alignment (§8.2). The choice is tested in the A–F ablation (§8.3).
+- **Example A:** motion sensors fire ON and then OFF a few seconds later. Hide the OFF and it is trivially guessed from the ON, so the attribute-masking stage mostly learns sensor mechanics.
+- **Example B:** two windows of a resident sleeping on different nights land in the same batch and are pushed apart as "different", although they are the same behaviour.
+- **What goes wrong:** pretraining carries little useful signal. In our real-data reproduction the contrastive loss fell to about 0.001 almost immediately, and pretraining gave no benefit on UCI B or hh101 ([DOMUSFM_REPRODUCTION.md](DOMUSFM_REPRODUCTION.md), §8.0).
+- **How HomeFM fixes it:** harder and more useful games: predict the next event and when it happens; hide large structured chunks (a time block, a device, a room, a modality) and predict their meaning (JEPA); align with language using a loss that allows many matches (SigLIP). The choice is tested, not assumed, in the A–F comparison (§8.2, §8.3).
 
 #### What DomusFM does well, and we keep
 
