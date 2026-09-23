@@ -14,6 +14,7 @@
    - [4.1 Limitations of DomusFM against our requirements, with scenarios](#41-limitations-of-domusfm-against-our-requirements-with-scenarios)
    - [4.2 DomusFM vs HomeFM, step by step](#42-domusfm-vs-homefm-step-by-step)
 5. [System architecture](#5-system-architecture)
+   - [5.2 Two pipelines: training and live](#52-two-pipelines-training-and-live)
 6. [Data model](#6-data-model)
 7. [HomeFM model architecture](#7-homefm-model-architecture)
    - [7.0 In plain words](#70-in-plain-words)
@@ -661,6 +662,196 @@ flowchart LR
 - **Open path:** concepts not materialised → semantic search over HomeFM moment embeddings, with confidence.
 - **Analysis path:** anomaly, device-health, baseline comparison and forecasting tools.
 - **Promotion loop:** frequently asked open-path concepts become materialised detectors.
+
+### 5.2 Two pipelines: training and live
+
+HomeFM runs as **two separate pipelines**:
+
+- **Training** happens offline on a server, once per model release. Its only output is a trained model file.
+- **Live** runs all the time on the home hub. It uses that model file, and its outputs are the stored facts and vectors that the agent reads.
+
+A common misunderstanding is that pretraining is a step each event passes through. It is not: pretraining produces the model, and the live pipeline runs the model.
+
+```mermaid
+flowchart TB
+    subgraph TRAIN["Pipeline 1: training (offline, server, once per release)"]
+        direction LR
+        T1["Many homes' data<br/>public · simulated · pilot · donated"] --> T2["Home Tokens"]
+        T2 --> T3["Event vectors<br/>(attribute fusion)"]
+        T3 --> T4["1-minute summaries<br/>(moment encoder)"]
+        T4 --> T5["Stream transformer<br/>(minutes in context)"]
+        T5 --> T6["Practice games<br/>next event + when · hide and guess · match sentences"]
+        T6 -- "adjust weights, repeat for millions of steps" --> T3
+        T6 --> T7["Trained teacher model"]
+        T7 --> T8["Small student model<br/>(distilled, int8)"]
+    end
+    subgraph LIVE["Pipeline 2: live (home hub, continuous)"]
+        direction LR
+        L1["Raw sensor data<br/>+ sound/camera tags"] --> L2["Home Tokens"]
+        L2 --> L3["Student model<br/>event vectors → minute summaries → stream"]
+        L3 --> L4["Heads<br/>tags · start/end · people · surprise"]
+        L4 --> L5["Episode builder"]
+        L3 --> L6["Projection → minute vectors"]
+        L2 --> S1[("Event store")]
+        L5 --> S2[("Episode / state / anomaly stores")]
+        L6 --> S3[("Vector store")]
+        S1 --> AG["LLM agent + tools"]
+        S2 --> AG
+        S3 --> AG
+    end
+    T8 -- "over-the-air update" --> L3
+```
+
+#### Pipeline 1: training (offline)
+
+| Step | What happens | Section |
+|---|---|---|
+| 1. Collect data | Public datasets, simulated homes, pilot and donated homes, all converted to Home Tokens | §11 |
+| 2. Encode | The same model path as live: event vectors → 1-minute summaries → stream transformer | §7 |
+| 3. Play the practice games | Predict the next event and when; hide big chunks and guess their meaning; match minutes with sentences. No labels are needed except captions for the third game. | §8 |
+| 4. Adjust and repeat | The model's weights are adjusted after every batch, for millions of steps | §8.2 |
+| 5. Fine-tune (optional) | A few labels and user feedback improve specific heads | §8.2 Stage 4 |
+| 6. Distil and ship | The large teacher trains a small student that fits on the hub, which is sent as an update | §7.3, §13 |
+
+Nothing searchable is stored in this pipeline. It produces only the **model file**.
+
+#### Pipeline 2: live (on the home hub)
+
+The live pipeline works at five rhythms:
+
+```mermaid
+flowchart LR
+    subgraph EV["Every event"]
+        A1["Sensor reading"] --> A2["Home Token"] --> A3["Event vector"]
+    end
+    subgraph MIN["Every minute"]
+        B1["Minute summary<br/>(this minute's events)"] --> B2["Stream, live mode<br/>(this minute + the past)"]
+        B2 --> B3["Heads:<br/>tag scores · surprise · people"]
+        B3 --> B4["Episode builder<br/>opens / extends / closes episodes"]
+        B2 --> B5["Minute vector<br/>→ vector store"]
+    end
+    subgraph HR["About every hour"]
+        C1["Look-back pass<br/>(last few hours, both directions)"] --> C2["Corrected episode<br/>starts and ends"]
+    end
+    subgraph DAY["Every day"]
+        D1["Day summary<br/>→ vector store"] --> D2["Anomaly and<br/>device-health checks"]
+    end
+    subgraph Q["On a question"]
+        E1["Agent"] --> E2["Tools: SQL lookup<br/>or vector search"] --> E3["Answer with times,<br/>evidence, confidence"]
+    end
+    A3 --> B1
+    B4 --> C1
+    B2 --> D1
+    C2 --> E2
+    D2 --> E2
+```
+
+| Rhythm | What happens | What gets stored | Status |
+|---|---|---|---|
+| **Every event** | Raw sensor reading → Home Token → event vector | Raw event → **event store** | ✅ model path · 📐 store |
+| **Every minute** | That minute's event vectors → one minute summary → the stream transformer reads it with the past minutes (live mode) → contextual minute vector → heads | Minute vector → **vector store**. Tag scores, surprise and people count for this minute | ✅ model path · 📐 heads and store |
+| **Every minute** | The episode builder opens, extends or closes episodes ("cooking still going") | Closed episodes → **episode store** | 📐 |
+| **About every hour** | The look-back pass re-reads the last few hours in both directions and corrects episode starts and ends (below) | Corrected **episodes** | ✅ bidirectional mode · 📐 pass |
+| **Every day** | A day summary is made from the day's minutes. Anomaly and device-health checks run. | Day vector → **vector store**. Flags → **anomaly and device-health tables** | 📐 |
+| **On a question** | The agent resolves the words and the time, calls tools and writes the answer | Nothing new, except feedback saved as labels | 📐 |
+
+There are two kinds of minute vector:
+
+- The **minute summary** is made *before* the stream transformer, from that minute's events alone.
+- The **contextual minute vector** comes *after* it, and includes the past. This is the one that is projected and stored for search.
+
+"Vectorise" is not a separate step: minute and day vectors come straight out of the model, plus a small projection that puts them on the same map as sentences (§10.1 Bridge 2).
+
+#### Live mode and look-back mode
+
+The stream transformer runs in two modes with the **same weights**. Only one setting changes: which minutes each minute is allowed to look at.
+
+| | Live mode (causal) | Look-back mode (bidirectional) |
+|---|---|---|
+| **Runs** | Every minute | About once an hour |
+| **Reads** | The new minute plus everything before it | A block of recent hours, all at once |
+| **Each minute can look at** | Only earlier minutes | Earlier **and later** minutes inside the block |
+| **Good for** | "What is happening now?", alarms, surprise, forecasts | Correct counts and durations for history |
+| **Weakness** | Cannot know what comes next, so a pause looks like an end | Delayed: it needs time to pass first |
+| **Code** | `encode(batch, causal=True)` | `encode(batch, causal=False)` |
+
+**Look-back mode does not see the real future.** At 20:00 it re-reads 17:00–20:00, all of which has already happened. When it re-checks 18:53, it can use what happened at 18:59 because 18:59 is already history. It is like a live cricket commentator compared with the newspaper report the next morning: the report is more accurate because it is written with hindsight.
+
+#### Worked example: one dinner
+
+What actually happened in the kitchen:
+
+| Time | Event |
+|---|---|
+| 18:30 | Stove on, cooking starts |
+| 18:52 | Stove **off** (stirring, letting it rest) |
+| 18:59 | Stove **on again** |
+| 19:22 | Stove off, food ready |
+| 19:22–19:25 | Washing a pan, wiping the counter |
+| 19:26 | Kitchen empty |
+
+The truth is **one cooking session, 18:30–19:22**.
+
+```mermaid
+sequenceDiagram
+    participant K as Kitchen sensors
+    participant L as Live mode (every minute)
+    participant B as Look-back (hourly)
+    participant S as Episode store
+    K->>L: 18:30 stove on
+    L->>S: cooking 18:30 to (still going)
+    K->>L: 18:52 stove off
+    L->>S: 18:57 closes it: cooking 18:30 to 18:52
+    K->>L: 18:59 stove on again
+    L->>S: new episode: cooking 18:59 to (still going)
+    K->>L: 19:22 stove off, 19:25 wiping, 19:26 kitchen empty
+    L->>S: 19:26 closes it: cooking 18:59 to 19:25
+    Note over S: After live mode: 2 sessions (wrong)
+    B->>B: 20:00 re-read 17:00 to 20:00 in both directions
+    B->>S: replace with one episode: cooking 18:30 to 19:22
+    Note over S: After look-back: 1 session (correct)
+```
+
+**Live mode, minute by minute.** Each guess is the best possible with what was known *at that moment*:
+
+| Clock time | What live mode knows so far | Its guess | Episode store |
+|---|---|---|---|
+| 18:30 | Stove just turned on, someone in the kitchen | Cooking started | `cooking 18:30 → (still going)` |
+| 18:53 | Stove turned off a minute ago | Maybe cooking ended? | `cooking 18:30 → (still going)` |
+| 18:57 | Stove off for 5 minutes, kitchen quiet | Cooking ended at 18:52 | `cooking 18:30 → 18:52` ❌ |
+| 18:59 | Stove on again | A **new** cooking session | `cooking 18:59 → (still going)` ❌ |
+| 19:25 | Tap, cupboard, wiping | Still cooking | `cooking 18:59 → (still going)` ❌ |
+| 19:26 | Kitchen empty | Cooking ended | `cooking 18:59 → 19:25` ❌ |
+
+This is not a bug: at 18:57 nobody could know that the stove would come back on at 18:59.
+
+**Look-back pass at 20:00.** It reads 17:00–20:00 as one block and re-checks each minute using what came before and after it:
+
+| Minute re-checked | Before it | After it (already happened by 20:00) | New decision |
+|---|---|---|---|
+| 18:53 (stove off) | Cooking since 18:30 | Stove on again at 18:59 | A **pause**, not an end ✅ |
+| 18:59 (stove on) | Cooking a few minutes ago | Continues until 19:22 | The **same** session continuing ✅ |
+| 19:23–19:25 (tap, wiping) | Stove just turned off | Kitchen empty at 19:26 | **Cleaning up**, so cooking ended at 19:22 ✅ |
+
+The store is corrected:
+
+```
+BEFORE (live mode):                AFTER (look-back at 20:00):
+cooking  18:30 – 18:52   ❌         cooking  18:30 – 19:22   ✅
+cooking  18:59 – 19:25   ❌
+```
+
+**What the user sees at different times:**
+
+| Asked at | Question | Answer | Source |
+|---|---|---|---|
+| 18:57 | "Is anyone cooking?" | "Cooking from 18:30, **seems to have stopped** at 18:52." | Live mode, the best guess at that moment |
+| 19:10 | "Is anyone cooking?" | "**Yes**, cooking since 18:59." | Live mode, start time still slightly wrong |
+| 21:00 | "How many times did we cook tonight?" | "**Once**, 18:30–19:22." | Corrected by the 20:00 look-back ✅ |
+
+Questions about **now** use live mode (fast, best guess). Questions about **the past** use the corrected episodes (accurate).
+
+**Why several hours per pass:** at 20:00 the newest minutes (19:58, 19:59) have almost no "after". Each pass therefore re-reads several recent hours, overlapping the previous pass, so every minute is re-checked once enough time has passed after it.
 
 ## 6. Data model
 
