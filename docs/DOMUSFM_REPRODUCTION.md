@@ -118,7 +118,7 @@ Consecutive windows share 29 of 30 events, so random folds put near-duplicates o
 2. Pretraining corpus differs: room-level merged sensors in the 2025 CASAS release, and 5–13 sensor names per home.
 3. Unreported fine-tuning hyperparameters. A sweep on UCI B (LR 1e-4/3e-4, batch 16/64, 10/30 epochs) did not raise ADL above 0.27, so this is not the main cause.
 
-### Real datasets: run 2 (corpus-scale, in progress)
+### Real datasets: run 2 (corpus-scale; paper masking done, the other two not started)
 
 Pretraining once on **77 homes / 27.3M events** (all labelled CASAS homes except the 7 targets, plus Milan and
 Aruba), then fine-tuning on the 7 targets (ADL and next-30; 5 % and 30 %; 3 contiguous folds).
@@ -128,6 +128,32 @@ Aruba), then fine-tuning on the 7 targets (ADL and next-30; 5 % and 30 %; 3 cont
 | DomusFM, paper masking (0.15, τ = 0.07) | `configs/domusfm_corpus.yaml` | `runs/domusfm_corpus.log` |
 | DomusFM, strong masking (0.5, τ = 0.2) | same + `--set` overrides in `scripts/run_domusfm_corpus.sh` | `runs/domusfm_corpus_strongmask.log` |
 | HomeFM objective E (8.0M params), same protocol | `configs/homefm_corpus.yaml` | `runs/homefm_corpus.log` |
+
+#### Result: DomusFM with paper masking, 77-home pretraining (finished 2026-09-24)
+
+Pretraining took about 45 minutes for 20,000 + 20,000 steps on one RTX 4090, with checkpoints every 2,000 steps. The contrastive loss fell from 2.35 to about 0.0005 within the first 5,000 steps of phase 1, restarted at 0.026 in phase 2 and fell to about 0.0005 again. Mean ± std over 3 contiguous folds:
+
+| Target | ADL 5 % | ADL 5 % w/o PT | ADL 30 % | ADL 30 % w/o PT | Next-30 5 % | Next-30 5 % w/o PT | Next-30 30 % | Next-30 30 % w/o PT |
+|---|---|---|---|---|---|---|---|---|
+| uci_b | 0.25 | 0.21 | 0.28 | 0.26 | 0.69 | 0.71 | 0.70 | 0.71 |
+| hh101 | 0.49 | **0.56** | 0.49 | **0.55** | 0.63 | 0.65 | 0.63 | 0.63 |
+| hh103 | 0.54 | **0.68** | 0.59 | **0.73** | 0.61 | 0.61 | 0.62 | 0.61 |
+| hh105 | 0.36 | **0.41** | 0.37 | **0.44** | 0.50 | 0.52 | 0.51 | 0.51 |
+| hh110 | 0.32 | 0.33 | 0.33 | **0.38** | 0.56 | 0.59 | 0.57 | 0.55 |
+| hh119 | 0.35 | **0.41** | 0.36 | **0.45** | 0.50 | 0.49 | 0.51 | 0.50 |
+| hh122 | 0.38 | **0.43** | 0.39 | **0.47** | 0.61 | 0.61 | 0.60 | 0.61 |
+| **Mean** | **0.385** | **0.435** | **0.400** | **0.468** | **0.587** | **0.596** | **0.591** | **0.590** |
+
+(w/o PT = the same model trained from random weights. Full per-fold numbers: `runs/domusfm_corpus/results.json`; the table: `runs/domusfm_corpus/results.md`.)
+
+Findings:
+
+1. **Pretraining hurts activity recognition.** It is worse than no pretraining on 6 of 7 targets, by 0.050 on average with 5 % labels and 0.068 with 30 %. Only UCI B improves (+0.04 / +0.02). More labels do not close the gap.
+2. **Pretraining makes no difference to next-30 prediction** (−0.009 and +0.002 on average).
+3. **More data does not fix it.** The earlier run with far fewer pretraining homes showed the same pattern (hh101 ADL 5 %: 0.49 vs 0.57). Scaling the corpus to 77 homes left it unchanged.
+4. The collapse of the contrastive loss to about 0.0005 fits the diagnosis in DESIGN.md §8.1 and §8.6: the "recognise your own window" game is solved through shortcuts (timestamps, untouched events, ON/OFF pairs), so it teaches features that do not help downstream and can hinder fine-tuning.
+
+Next, on request: the strong-masking DomusFM run, and HomeFM variant E at 8.0M (`configs/homefm_corpus.yaml`) and size-matched at 28.6M (`configs/homefm_corpus_384.yaml`).
 
 Fast loading: `casas_fast.py` parses a home into numpy arrays in ~0.1 s and caches it as `.npz`
 (identical output to `casas_zenodo.py`, tested). `BalancedSampler` replaces `WeightedRandomSampler`,

@@ -1,0 +1,352 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 2010" width="1800" height="2010" font-family="Arial, Helvetica, sans-serif">
+  <style>
+    .t   { font-size: 14px; font-weight: bold; fill: #111827; }
+    .s   { font-size: 12.5px; fill: #1f2937; }
+    .n   { font-size: 12px; fill: #374151; font-style: italic; }
+    .h1  { font-size: 26px; font-weight: bold; fill: #111827; }
+    .h2  { font-size: 19px; font-weight: bold; fill: #111827; }
+    .lg  { font-size: 13px; fill: #111827; }
+    .data   { fill: #ffffff; stroke: #111827; stroke-width: 1.5; }
+    .frozen { fill: #e5e7eb; stroke: #4b5563; stroke-width: 1.5; }
+    .nn     { fill: #dbeafe; stroke: #2563eb; stroke-width: 1.5; }
+    .tf     { fill: #ede9fe; stroke: #7c3aed; stroke-width: 1.5; }
+    .loss   { fill: #fee2e2; stroke: #dc2626; stroke-width: 1.5; }
+    .rule   { fill: #dcfce7; stroke: #16a34a; stroke-width: 1.5; }
+    .store  { fill: #fef3c7; stroke: #d97706; stroke-width: 1.5; }
+    .llm    { fill: #fce7f3; stroke: #db2777; stroke-width: 1.5; }
+    .panel  { fill: #f9fafb; stroke: #9ca3af; stroke-width: 2; }
+    .model  { fill: none; stroke: #7c3aed; stroke-width: 2; stroke-dasharray: 8 5; }
+    .game   { fill: #fff7f7; stroke: #dc2626; stroke-width: 1.5; stroke-dasharray: 6 4; }
+    .ar     { stroke: #374151; stroke-width: 1.8; fill: none; marker-end: url(#arrow); }
+    .ard    { stroke: #6b7280; stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; marker-end: url(#arrow); }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#374151"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1800" height="2010" fill="#ffffff"/>
+  <text x="30" y="42" class="h1">HomeFM block diagram: training and inference</text>
+  <text x="30" y="66" class="n">HomeFM is encoder-only (no decoder). Transformers in the system: MiniLM (encoder, frozen), attribute fusion (1 layer), moment encoder (cross-attention), stream transformer, event read-out, game-2 predictor, LLM agent (decoder-only, frozen).</text>
+
+  <!-- Legend -->
+  <rect x="30" y="80" width="26" height="18" class="data"/><text x="62" y="94" class="lg">Data</text>
+  <rect x="120" y="80" width="26" height="18" class="frozen"/><text x="152" y="94" class="lg">Frozen model (never trained here)</text>
+  <rect x="380" y="80" width="26" height="18" class="nn"/><text x="412" y="94" class="lg">Learned neural network (linear / MLP / embedding table)</text>
+  <rect x="790" y="80" width="26" height="18" class="tf"/><text x="822" y="94" class="lg">Learned transformer / attention</text>
+  <rect x="1060" y="80" width="26" height="18" class="loss"/><text x="1092" y="94" class="lg">Game / loss</text>
+  <rect x="1200" y="80" width="26" height="18" class="rule"/><text x="1232" y="94" class="lg">Code / rules (not a neural network)</text>
+  <rect x="1480" y="80" width="26" height="18" class="store"/><text x="1512" y="94" class="lg">Storage</text>
+  <rect x="1600" y="80" width="26" height="18" class="llm"/><text x="1632" y="94" class="lg">LLM agent</text>
+
+  <!-- ===================== A · TRAINING ===================== -->
+  <rect x="15" y="115" width="1770" height="915" rx="10" class="panel"/>
+  <text x="35" y="145" class="h2">A · TRAINING (offline, server GPU, once per model release)</text>
+
+  <!-- Row T1 -->
+  <rect x="45" y="165" width="210" height="85" rx="6" class="data"/>
+  <text x="55" y="187" class="t">Raw dataset files</text>
+  <text x="55" y="206" class="s">CASAS + UCI: 84 homes</text>
+  <text x="55" y="223" class="s">time · device code · reading</text>
+  <text x="55" y="240" class="s">(labels kept aside)</text>
+
+  <rect x="295" y="165" width="240" height="85" rx="6" class="rule"/>
+  <text x="305" y="187" class="t">Converter (code)</text>
+  <text x="305" y="206" class="s">parse lines · map ON/OFF</text>
+  <text x="305" y="223" class="s">normalise numbers per device</text>
+  <text x="305" y="240" class="s">cut into 30-min windows</text>
+
+  <rect x="575" y="165" width="250" height="85" rx="6" class="data"/>
+  <text x="585" y="187" class="t">Home Tokens (cached)</text>
+  <text x="585" y="206" class="s">time · device row · state / value</text>
+  <text x="585" y="223" class="s">modality · confidence</text>
+  <text x="585" y="240" class="s">time since last event</text>
+
+  <rect x="905" y="165" width="250" height="85" rx="6" class="data"/>
+  <text x="915" y="187" class="t">Device sentences</text>
+  <text x="915" y="206" class="s">"ceiling in kitchen,</text>
+  <text x="915" y="223" class="s"> motion sensor"</text>
+  <text x="915" y="240" class="s">one per device</text>
+
+  <rect x="1195" y="165" width="270" height="85" rx="6" class="frozen"/>
+  <text x="1205" y="187" class="t">MiniLM sentence encoder</text>
+  <text x="1205" y="206" class="s">transformer ENCODER, 6 layers</text>
+  <text x="1205" y="223" class="s">FROZEN · 22M params</text>
+  <text x="1205" y="240" class="s">runs once per device</text>
+
+  <rect x="1505" y="165" width="255" height="85" rx="6" class="store"/>
+  <text x="1515" y="187" class="t">Device table</text>
+  <text x="1515" y="206" class="s">384 numbers per device</text>
+  <text x="1515" y="223" class="s">looked up by row number</text>
+  <text x="1515" y="240" class="s">(per home, outside the model)</text>
+
+  <path d="M255,207 L293,207" class="ar"/>
+  <path d="M535,207 L573,207" class="ar"/>
+  <path d="M1155,207 L1193,207" class="ar"/>
+  <path d="M1465,207 L1503,207" class="ar"/>
+
+  <!-- HomeFM backbone -->
+  <rect x="35" y="300" width="1730" height="345" rx="10" class="model"/>
+  <text x="50" y="324" class="h2" fill="#5b21b6">HomeFM backbone: encoder-only, every block below is learned</text>
+
+  <path d="M700,250 L700,275 L190,275 L190,343" class="ar"/>
+  <path d="M1632,250 L1632,285 L330,285 L330,343" class="ar"/>
+  <text x="760" y="270" class="n">tokens</text>
+  <text x="1300" y="280" class="n">device numbers (the "what" fact)</text>
+
+  <rect x="55" y="345" width="455" height="280" rx="6" class="nn"/>
+  <text x="65" y="368" class="t">1 · Event embedder (per event)</text>
+  <text x="65" y="390" class="s">What: Linear 384 → d  (NN)</text>
+  <text x="65" y="409" class="s">Value: Embedding(ON / OFF / NA) + MLP on number  (NN)</text>
+  <text x="65" y="428" class="s">When: sin/cos of hour and weekday (fixed formula)</text>
+  <text x="65" y="445" class="s">          → Linear, + MLP on log gaps  (NN)</text>
+  <text x="65" y="464" class="s">Meta: Embedding(5 modalities) + Linear(confidence)</text>
+  <rect x="65" y="480" width="435" height="80" rx="5" class="tf"/>
+  <text x="75" y="500" class="t">Attribute fusion</text>
+  <text x="75" y="519" class="s">1 transformer-encoder layer: self-attention</text>
+  <text x="75" y="536" class="s">across the 4 attribute vectors (+ type tags)</text>
+  <text x="75" y="553" class="s">→ average → LayerNorm</text>
+  <text x="65" y="590" class="t">→ 1 event vector (d = 256 numbers)</text>
+  <text x="65" y="610" class="n">DomusFM equivalent: 5 attributes, no value/meta nets</text>
+
+  <rect x="535" y="345" width="380" height="280" rx="6" class="tf"/>
+  <text x="545" y="368" class="t">2 · Moment encoder (per minute)</text>
+  <text x="545" y="390" class="s">Perceiver-style cross-attention</text>
+  <text x="545" y="409" class="s">4 learned queries ("reporters")</text>
+  <text x="545" y="428" class="s">attend to the minute's event vectors</text>
+  <text x="545" y="447" class="s">+ learned "quiet" key (empty minutes)</text>
+  <text x="545" y="466" class="s">MLP refine (NN) → average the 4</text>
+  <text x="545" y="485" class="s">+ Linear(log event count)</text>
+  <text x="545" y="504" class="s">+ time of minute (sin/cos → Linear)</text>
+  <text x="545" y="590" class="t">→ 1 minute vector per minute</text>
+  <text x="545" y="610" class="n">0 to 256 events in, always 1 vector out</text>
+
+  <rect x="940" y="345" width="400" height="280" rx="6" class="tf"/>
+  <text x="950" y="368" class="t">3 · Stream transformer</text>
+  <text x="950" y="390" class="s">Transformer ENCODER over minutes</text>
+  <text x="950" y="409" class="s">6 layers × 8 heads, d = 256 (8.0M model)</text>
+  <text x="950" y="428" class="s">12 × 12, d = 384 in the size-matched</text>
+  <text x="950" y="445" class="s">config (28.6M, same as DomusFM)</text>
+  <text x="950" y="464" class="s">+ learned position of each minute</text>
+  <text x="950" y="483" class="s">attention mask: causal (past only)</text>
+  <text x="950" y="500" class="s">or bidirectional (both sides)</text>
+  <text x="950" y="590" class="t">→ contextual minute vectors</text>
+  <text x="950" y="610" class="n">the main output of HomeFM</text>
+
+  <rect x="1365" y="345" width="385" height="280" rx="6" class="tf"/>
+  <text x="1375" y="368" class="t">4 · Event read-out</text>
+  <text x="1375" y="390" class="s">Transformer ENCODER, 2 layers, causal</text>
+  <text x="1375" y="409" class="s">each event vector + the context of</text>
+  <text x="1375" y="428" class="s">the previous minute (never the future)</text>
+  <text x="1375" y="590" class="t">→ contextual event vectors</text>
+  <text x="1375" y="610" class="n">used by game 1 (event-level detail)</text>
+
+  <path d="M510,485 L533,485" class="ar"/>
+  <path d="M915,485 L938,485" class="ar"/>
+  <path d="M1340,485 L1363,485" class="ar"/>
+
+  <!-- Games -->
+  <rect x="45" y="675" width="530" height="245" rx="8" class="game"/>
+  <text x="58" y="700" class="t" fill="#991b1b">GAME 1 · predict the next event (variant D)</text>
+  <rect x="58" y="712" width="504" height="120" rx="5" class="nn"/>
+  <text x="68" y="733" class="t">Next-event head (NN: small MLPs)</text>
+  <text x="68" y="752" class="s">device: dot product with this home's device-table rows</text>
+  <text x="68" y="770" class="s">state: classifier · value: regressor</text>
+  <text x="68" y="788" class="s">time until next: mixture of 8 log-normals</text>
+  <text x="68" y="806" class="s">input: event read-out vectors</text>
+  <text x="68" y="824" class="n">later reused for forecasts and the surprise score</text>
+  <rect x="58" y="845" width="504" height="60" rx="5" class="loss"/>
+  <text x="68" y="868" class="t">Loss 1: negative log-likelihood</text>
+  <text x="68" y="888" class="s">how wrong the guesses about the next event were</text>
+
+  <rect x="595" y="675" width="620" height="245" rx="8" class="game"/>
+  <text x="608" y="700" class="t" fill="#991b1b">GAME 2 · hide a big chunk, predict its meaning (variant C)</text>
+  <rect x="608" y="712" width="290" height="58" rx="5" class="rule"/>
+  <text x="618" y="733" class="t">Structured mask (code)</text>
+  <text x="618" y="752" class="s">minutes · device · room · signal type</text>
+  <rect x="910" y="712" width="292" height="58" rx="5" class="frozen"/>
+  <text x="920" y="733" class="t">Teacher: EMA copy of HomeFM</text>
+  <text x="920" y="752" class="s">sees the full window · no gradients</text>
+  <rect x="608" y="780" width="594" height="55" rx="5" class="tf"/>
+  <text x="618" y="801" class="t">Predictor (NN): 2-layer transformer encoder + Linear</text>
+  <text x="618" y="820" class="s">student HomeFM on the masked window → guess the hidden minutes' vectors</text>
+  <rect x="608" y="845" width="594" height="60" rx="5" class="loss"/>
+  <text x="618" y="868" class="t">Loss 2: Smooth-L1 (guess vs teacher's vectors)</text>
+  <text x="618" y="888" class="s">teacher updated as 99.6 % old + 0.4 % new after each round</text>
+
+  <rect x="1235" y="675" width="525" height="245" rx="8" class="game"/>
+  <text x="1248" y="700" class="t" fill="#991b1b">GAME 3 · match with sentences (added in variant F)</text>
+  <rect x="1248" y="712" width="245" height="58" rx="5" class="frozen"/>
+  <text x="1258" y="733" class="t">Captions → MiniLM</text>
+  <text x="1258" y="752" class="s">"a resident is cooking"</text>
+  <rect x="1503" y="712" width="245" height="58" rx="5" class="nn"/>
+  <text x="1513" y="733" class="t">Q (NN): 2-layer MLP</text>
+  <text x="1513" y="752" class="s">384 → 384 → 128</text>
+  <rect x="1248" y="780" width="500" height="55" rx="5" class="nn"/>
+  <text x="1258" y="801" class="t">P (NN): 2-layer MLP, d → d → 128</text>
+  <text x="1258" y="820" class="s">on HomeFM's (pooled) contextual vectors</text>
+  <rect x="1248" y="845" width="500" height="60" rx="5" class="loss"/>
+  <text x="1258" y="868" class="t">Loss 3: SigLIP (match / no-match per pair)</text>
+  <text x="1258" y="888" class="s">pull matching minutes and sentences together</text>
+
+  <path d="M1557,625 L1557,650 L310,650 L310,673" class="ar"/>
+  <path d="M1140,625 L1140,660 L905,660 L905,673" class="ar"/>
+  <path d="M1250,625 L1250,665 L1497,665 L1497,673" class="ar"/>
+
+  <!-- Update -->
+  <rect x="45" y="945" width="1170" height="70" rx="6" class="loss"/>
+  <text x="58" y="970" class="t">Total loss = Loss 1 + Loss 2 (+ Loss 3)  →  backpropagation + AdamW optimiser</text>
+  <text x="58" y="992" class="s">nudges every learned (blue / purple) block a little · 20,000 rounds × 32 windows of 30 minutes · MiniLM and the teacher copy are never nudged by gradients</text>
+  <path d="M630,920 L630,943" class="ar"/>
+  <rect x="1235" y="945" width="525" height="70" rx="6" class="data"/>
+  <text x="1248" y="970" class="t">Output: trained model file</text>
+  <text x="1248" y="992" class="s">→ tested on 7 unseen homes · → distilled to a small student (planned)</text>
+  <path d="M1215,980 L1233,980" class="ar"/>
+
+  <!-- ===================== B · INFERENCE ===================== -->
+  <rect x="15" y="1050" width="1770" height="945" rx="10" class="panel"/>
+  <text x="35" y="1080" class="h2">B · INFERENCE (on the home hub, continuous; weights frozen)</text>
+
+  <rect x="45" y="1100" width="215" height="85" rx="6" class="data"/>
+  <text x="55" y="1122" class="t">Home sensors</text>
+  <text x="55" y="1141" class="s">motion · doors · plugs</text>
+  <text x="55" y="1158" class="s">via Home Assistant / Matter</text>
+
+  <rect x="45" y="1195" width="215" height="80" rx="6" class="frozen"/>
+  <text x="55" y="1217" class="t">Sound / camera detectors</text>
+  <text x="55" y="1236" class="s">pretrained audio / vision nets</text>
+  <text x="55" y="1253" class="s">FROZEN · output tag + conf</text>
+
+  <rect x="300" y="1140" width="240" height="85" rx="6" class="rule"/>
+  <text x="310" y="1162" class="t">Converter (code)</text>
+  <text x="310" y="1181" class="s">code → device row</text>
+  <text x="310" y="1198" class="s">state / number / tag</text>
+
+  <rect x="580" y="1140" width="250" height="85" rx="6" class="data"/>
+  <text x="590" y="1162" class="t">Home Tokens</text>
+  <text x="590" y="1181" class="s">one per event, as in training</text>
+
+  <rect x="870" y="1140" width="250" height="85" rx="6" class="store"/>
+  <text x="880" y="1162" class="t">Event store (SQL)</text>
+  <text x="880" y="1181" class="s">every raw event: evidence,</text>
+  <text x="880" y="1198" class="s">energy sums, exact lookups</text>
+
+  <rect x="1160" y="1140" width="600" height="85" rx="6" class="store"/>
+  <text x="1170" y="1162" class="t">Device registry + tag vocabulary (built at onboarding)</text>
+  <text x="1170" y="1181" class="s">MiniLM numbers per device and per detector tag</text>
+  <text x="1170" y="1198" class="s">loaded into memory; one model file serves every home</text>
+
+  <path d="M260,1142 L298,1170" class="ar"/>
+  <path d="M260,1235 L298,1200" class="ar"/>
+  <path d="M540,1182 L578,1182" class="ar"/>
+  <path d="M830,1182 L868,1182" class="ar"/>
+
+  <rect x="35" y="1265" width="1730" height="115" rx="10" class="tf"/>
+  <text x="50" y="1290" class="h2" fill="#5b21b6">Trained HomeFM (student): the same 4 blocks as in training, weights FROZEN</text>
+  <text x="50" y="1315" class="s">1 Event embedder → 2 Moment encoder → 3 Stream transformer → contextual minute vectors   (4 Event read-out → contextual event vectors)</text>
+  <text x="50" y="1337" class="s">Live mode: causal mask, every minute ("what is happening now")      ·      Look-back mode: bidirectional mask, about every hour (corrects the recent past)</text>
+  <text x="50" y="1359" class="n">No games and no losses at inference: nothing is nudged. Only the heads below run on the outputs.</text>
+  <path d="M705,1225 L705,1263" class="ar"/>
+  <path d="M1460,1225 L1460,1263" class="ar"/>
+
+  <!-- Heads -->
+  <rect x="45" y="1410" width="420" height="120" rx="6" class="nn"/>
+  <text x="55" y="1432" class="t">Activity tagger (NN)</text>
+  <text x="55" y="1451" class="s">score = compare( P(minute vector),</text>
+  <text x="55" y="1468" class="s">                          Q(MiniLM(activity sentence)) )</text>
+  <text x="55" y="1487" class="s">any activity sentence · several at once</text>
+  <text x="55" y="1506" class="n">P, Q from game 3 · per-minute version planned</text>
+
+  <rect x="485" y="1410" width="245" height="120" rx="6" class="nn"/>
+  <text x="495" y="1432" class="t">Start / end head (NN)</text>
+  <text x="495" y="1451" class="s">where activities begin</text>
+  <text x="495" y="1468" class="s">and end</text>
+  <text x="495" y="1506" class="n">planned</text>
+
+  <rect x="750" y="1410" width="260" height="120" rx="6" class="nn"/>
+  <text x="760" y="1432" class="t">Occupancy / person</text>
+  <text x="760" y="1451" class="t">slots (NN)</text>
+  <text x="760" y="1470" class="s">people per room, who</text>
+  <text x="760" y="1506" class="n">planned</text>
+
+  <rect x="1030" y="1410" width="320" height="120" rx="6" class="nn"/>
+  <text x="1040" y="1432" class="t">Next-event head (NN)</text>
+  <text x="1040" y="1451" class="s">from game 1: what comes next,</text>
+  <text x="1040" y="1468" class="s">and when → forecasts</text>
+  <text x="1040" y="1487" class="s">how unexpected each event was</text>
+  <text x="1040" y="1506" class="s">→ surprise score</text>
+
+  <rect x="1370" y="1410" width="390" height="120" rx="6" class="nn"/>
+  <text x="1380" y="1432" class="t">P (NN): minute → 128 numbers</text>
+  <text x="1380" y="1451" class="s">each minute's vector placed on the</text>
+  <text x="1380" y="1468" class="s">shared "map of meanings" for search</text>
+
+  <path d="M255,1380 L255,1408" class="ar"/>
+  <path d="M607,1380 L607,1408" class="ar"/>
+  <path d="M880,1380 L880,1408" class="ar"/>
+  <path d="M1190,1380 L1190,1408" class="ar"/>
+  <path d="M1565,1380 L1565,1408" class="ar"/>
+
+  <!-- Engines -->
+  <rect x="45" y="1565" width="420" height="95" rx="6" class="rule"/>
+  <text x="55" y="1587" class="t">Episode builder (rules)</text>
+  <text x="55" y="1606" class="s">switch on high / off low · merge short gaps</text>
+  <text x="55" y="1623" class="s">drop too-short · look-back corrects</text>
+  <text x="55" y="1640" class="n">minutes → "cooking 18:30–19:22"</text>
+
+  <rect x="485" y="1565" width="525" height="95" rx="6" class="rule"/>
+  <text x="495" y="1587" class="t">Anomaly engine + device-health engine (scores + rules)</text>
+  <text x="495" y="1606" class="s">surprise + rarity + routine drift · always with an explanation</text>
+  <text x="495" y="1623" class="s">each device vs its own past and similar devices</text>
+  <text x="495" y="1640" class="n">planned</text>
+
+  <rect x="1370" y="1565" width="390" height="95" rx="6" class="store"/>
+  <text x="1380" y="1587" class="t">Vector store (e.g. Qdrant)</text>
+  <text x="1380" y="1606" class="s">minute (and day) vectors</text>
+  <text x="1380" y="1623" class="s">search by meaning</text>
+
+  <path d="M255,1530 L255,1563" class="ar"/>
+  <path d="M607,1530 L520,1563" class="ar"/>
+  <path d="M1190,1530 L900,1563" class="ar"/>
+  <path d="M1565,1530 L1565,1563" class="ar"/>
+
+  <rect x="45" y="1690" width="965" height="65" rx="6" class="store"/>
+  <text x="55" y="1712" class="t">Episode · state · anomaly · device-health tables (SQL)</text>
+  <text x="55" y="1732" class="s">plain rows with text labels, times and confidence: what the agent mostly reads</text>
+  <path d="M255,1660 L255,1688" class="ar"/>
+  <path d="M747,1660 L747,1688" class="ar"/>
+
+  <!-- Question time -->
+  <rect x="45" y="1800" width="240" height="95" rx="6" class="data"/>
+  <text x="55" y="1822" class="t">User question</text>
+  <text x="55" y="1841" class="s">"How many times did</text>
+  <text x="55" y="1858" class="s"> we cook today?"</text>
+
+  <rect x="325" y="1800" width="470" height="95" rx="6" class="llm"/>
+  <text x="335" y="1822" class="t">LLM agent (small local LLM)</text>
+  <text x="335" y="1841" class="s">decoder-only transformer · FROZEN</text>
+  <text x="335" y="1858" class="s">understands the question, calls tools,</text>
+  <text x="335" y="1875" class="s">writes the answer · never does the maths</text>
+
+  <rect x="835" y="1800" width="500" height="95" rx="6" class="rule"/>
+  <text x="845" y="1822" class="t">Tools (code)</text>
+  <text x="845" y="1841" class="s">SQL: query_episodes, events, states…</text>
+  <text x="845" y="1858" class="s">semantic_search: sentence → MiniLM → Q</text>
+  <text x="845" y="1875" class="s">→ nearest minutes in the vector store</text>
+
+  <rect x="1375" y="1800" width="385" height="95" rx="6" class="data"/>
+  <text x="1385" y="1822" class="t">Answer</text>
+  <text x="1385" y="1841" class="s">"2 times: 07:30–07:50 and</text>
+  <text x="1385" y="1858" class="s"> 18:30–19:22" + evidence</text>
+  <text x="1385" y="1875" class="s">and confidence</text>
+
+  <path d="M285,1847 L323,1847" class="ar"/>
+  <path d="M795,1847 L833,1847" class="ar"/>
+  <path d="M1335,1847 L1373,1847" class="ar"/>
+  <path d="M900,1800 L900,1757" class="ard"/>
+  <path d="M1250,1800 L1250,1780 L1565,1780 L1565,1662" class="ard"/>
+  <text x="1030" y="1773" class="n">tools read the SQL tables, the event store and the vector store</text>
+
+  <text x="35" y="1975" class="n">"planned" = designed but not implemented yet. Built today: converters, device table, Home Tokens, event embedder, moment encoder, stream transformer (both modes), event read-out, next-event head, games 1–3 (per-window alignment).</text>
+</svg>

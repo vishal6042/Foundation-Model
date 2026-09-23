@@ -15,6 +15,7 @@
    - [4.2 DomusFM vs HomeFM, step by step](#42-domusfm-vs-homefm-step-by-step)
 5. [System architecture](#5-system-architecture)
    - [5.2 Two pipelines: training and live](#52-two-pipelines-training-and-live)
+   - [5.3 Block diagram: every component in training and inference](#53-block-diagram-every-component-in-training-and-inference)
 6. [Data model](#6-data-model)
    - [6.4 From raw data to Home Tokens](#64-from-raw-data-to-home-tokens)
    - [6.5 Device registry (the device table)](#65-device-registry-the-device-table)
@@ -98,6 +99,8 @@ In DomusFM, each activity the model knows is a row of numbers learned from label
 - **HomeFM** is like describing what you are looking for in words. Something new is just a new description.
 
 For example, "someone is vacuuming" gives a new activity immediately, without collecting labelled examples first (§4.1 L1).
+
+The head still takes HomeFM's minute vectors as its input: the sentences replace only its per-activity weights, through two small learned networks, P and Q, that make minutes and sentences comparable (§7.5). The device registry uses the same trick at the input end, where each device is described by a sentence instead of learned numbers per device code (§6.5).
 
 **Answering a question**
 
@@ -860,6 +863,29 @@ cooking  18:59 – 19:25   ❌
 Questions about **now** use live mode (fast, best guess). Questions about **the past** use the corrected episodes (accurate).
 
 **Why several hours per pass:** at 20:00 the newest minutes (19:58, 19:59) have almost no "after". Each pass therefore re-reads several recent hours, overlapping the previous pass, so every minute is re-checked once enough time has passed after it.
+
+### 5.3 Block diagram: every component in training and inference
+
+One image showing every block of HomeFM in both pipelines, colour-coded by what kind of component it is (data, frozen model, learned neural network, learned transformer, loss, code or rules, storage, LLM agent).
+
+![HomeFM block diagram: training and inference](images/homefm_block_diagram.svg)
+
+**How to read it**
+
+| Colour | Kind of block | Examples |
+|---|---|---|
+| White | Data | Raw dataset files, Home Tokens, device sentences, the user's question |
+| Grey | **Frozen** model: used, never trained here | MiniLM sentence encoder, sound and camera detectors, the EMA teacher copy in game 2 (updated by averaging, not by gradients) |
+| Blue | **Learned neural network** (linear layers, MLPs, embedding tables) | Event embedder, next-event head, P and Q, tagger |
+| Purple | **Learned transformer or attention** | Attribute fusion (1 layer), moment encoder (Perceiver cross-attention), stream transformer, event read-out, game-2 predictor |
+| Red | Game or loss (training only) | Loss 1 (next-event likelihood), Loss 2 (Smooth-L1 to the teacher), Loss 3 (SigLIP) |
+| Green | Code or rules, not a neural network | Converter, structured mask, episode builder, anomaly and device-health engines, tools |
+| Amber | Storage | Device table, event store, SQL tables, vector store |
+| Pink | LLM agent | Small local LLM, decoder-only, frozen |
+
+**Encoder or decoder?** HomeFM is **encoder-only**: every transformer in it (attribute fusion, moment encoder, stream transformer, event read-out, game-2 predictor) turns inputs into vectors, and none generates text or tokens one by one. MiniLM is also a transformer encoder. The only decoder is the LLM agent, which is decoder-only, frozen, and sits outside HomeFM.
+
+**Training vs inference.** Panel A is the offline training pipeline: the same four backbone blocks, plus the three games and their losses, whose total nudges every blue and purple block. Panel B is the live system on the hub: the same four blocks with frozen weights, no games or losses, and the heads, engines, stores and agent that turn the contextual minute vectors into answers. Blocks marked "planned" are designed but not built yet. The pipelines and their timing are described in §5.2.
 
 ## 6. Data model
 
@@ -1633,6 +1659,73 @@ For 18:31, with three events:
 
 Technically this is a Perceiver-style cross-attention with K = 4 learned latent queries, computed for all minutes at once with a segment softmax (`MomentEncoder`).
 
+#### Step 2 in detail: the moment encoder in plain words
+
+**Why it is needed.** Minutes vary enormously: a cooking minute can have 40 events, a quiet afternoon minute 1, a night minute none. The transformer needs **exactly one vector per minute** so that "the last 4 hours" is always 240 steps. The moment encoder squeezes any number of events (0 to 256) into one fixed-size vector without losing what matters.
+
+**Why not just average the events.** A plain average treats every event equally. In a minute with 38 motion events, 1 fridge opening and 1 stove turning on, the average is 95 % motion, and the stove turning on, the most important thing that happened, is drowned out. The moment encoder can **focus**.
+
+**Four reporters.** Picture four reporters watching the same minute, each of which has *learned* (not been told) to look for different things, for example movement, appliances, doors, or anything rare. Each reporter:
+
+1. **Scores every event** for relevance to it.
+2. **Turns the scores into percentages** of attention (a softmax).
+3. **Writes a report:** a weighted mix of the events, mostly the ones it cares about.
+
+Minute 18:31 has 5 events: 3 kitchen motions, 1 fridge opening and the stove at 1,850 W. An "appliances" reporter might score and weigh them like this:
+
+| Event | Relevance score | Share of attention |
+|---|---|---|
+| Kitchen motion × 3 | 0.5 each | 5 % each (16 % together) |
+| Fridge open | 1.5 | 15 % |
+| Stove ON, 1,850 W | 3.0 | **66 %** |
+| "Quiet" option | 0.0 | 3 % |
+
+Its report is mostly "stove on", with a little "fridge", even though motion events outnumber both. A "movement" reporter weighs the same minute very differently and reports mostly the motion.
+
+**The "quiet" option.** Every reporter always has one extra entry in its list: a learned "quiet" key meaning "nothing relevant happened". In a busy minute it gets a small share. In an **empty minute it is the only entry**, so it gets 100 % and the report says "nothing happened". An empty minute therefore still gets a proper summary, which matters: "nobody moved all morning" is information.
+
+```mermaid
+flowchart LR
+    subgraph EVENTS["Event vectors in minute 18:31"]
+        E1["motion"]
+        E2["motion"]
+        E3["motion"]
+        E4["fridge open"]
+        E5["stove 1,850 W"]
+        Q0["quiet option<br/>(always present)"]
+    end
+    subgraph REP["4 learned reporters"]
+        R1["Reporter 1<br/>e.g. movement"]
+        R2["Reporter 2<br/>e.g. appliances"]
+        R3["Reporter 3<br/>e.g. doors"]
+        R4["Reporter 4<br/>e.g. rare things"]
+    end
+    EVENTS --> R1
+    EVENTS --> R2
+    EVENTS --> R3
+    EVENTS --> R4
+    R1 --> AVG["Average of<br/>the 4 reports"]
+    R2 --> AVG
+    R3 --> AVG
+    R4 --> AVG
+    AVG --> ADD["+ event count<br/>+ time of day and weekday"]
+    ADD --> OUT["ONE minute summary<br/>(d numbers)"]
+```
+
+**Putting the minute together.** A small network refines each report, the four reports are averaged, and two facts are added: **how many events** the minute had (on a log scale: none, a few, very busy) and **the minute's time of day and weekday**. The count is useful in itself: 40 events a minute looks like cooking or cleaning, 1 looks like someone passing through.
+
+**What is learned in training:** each reporter's question (what it looks for), how it turns the events it focuses on into a report, what "quiet" looks like, and how the count and time are added. All of it is trained together with the transformer by the games (§8): if the reporters ignored the stove, game 1 would predict worse, so training pushes one of them to pay attention to it.
+
+It is like four journalists covering the same one-minute scene: the sports reporter writes about the players, the weather reporter about the rain, the crowd reporter about the stands, and the investigative one notices the odd detail. An editor combines their notes into one short summary, adding "busy scene" or "quiet scene" and the time. However crowded or empty the scene was, the summary has the same size.
+
+| Plain term | Technical term |
+|---|---|
+| Reporters | Learned latent queries (K = 4) |
+| Scoring and percentages | Cross-attention with a softmax |
+| Doing it per minute, for all minutes at once | Segment softmax |
+| The "quiet" option | A learned quiet key and value, always present |
+| The whole design | Perceiver-style encoder (`MomentEncoder`, ✅ built) |
+
 #### Step 3 · Stream transformer: minutes in context
 
 The stream transformer adds each minute's **position in the sequence** and reads the minute summaries in order. In live mode, 18:31 looks only at earlier minutes. In look-back mode, it also looks at later minutes that have already happened (§5.2). During training game 2, hidden minutes are replaced by a learned "hidden" marker. The output for 18:31 is its **contextual minute vector**: still 256 numbers, but now "18:31 in context" (someone came in at 18:28, the fridge opened at 18:29, it is dinnertime).
@@ -1676,10 +1769,10 @@ HomeFM's contextual minute vectors are made from sensor events. Sentence vectors
 ```mermaid
 flowchart LR
     subgraph HOME["Home side"]
-        M["Sensor minutes"] --> HFM["HomeFM"] --> MV["Minute vector"] --> PH["Projection head<br/>(learned)"]
+        M["Sensor minutes"] --> HFM["HomeFM"] --> MV["Minute vector"] --> PH["P: projection network<br/>(learned)"]
     end
     subgraph TEXT["Text side"]
-        S["Sentence<br/>someone is cooking"] --> TE["Text encoder<br/>(frozen, never changes)"] --> TV["Sentence vector"] --> PT["Projection head<br/>(learned)"]
+        S["Sentence<br/>someone is cooking"] --> TE["Text encoder<br/>(frozen, never changes)"] --> TV["Sentence vector"] --> PT["Q: projection network<br/>(learned)"]
     end
     PH --> SP["Shared space<br/>(128 numbers each)"]
     PT --> SP
@@ -1706,7 +1799,7 @@ A head that recognises activities compares the minute vector with **one referenc
 | | DomusFM activity head | HomeFM tagger |
 |---|---|---|
 | Reference vector for an activity | A row of weights **learned from labelled examples** | The activity's **sentence**, through the text encoder and projection |
-| Score | `Linear(window vector)[class]` | `σ(a · cos(P(minute vector), P(text(sentence))) + b)` |
+| Score | `Linear(window vector)[class]` | `σ(a · cos(P(minute vector), Q(text(sentence))) + b)` |
 | New activity | Collect labels, retrain | Write a sentence |
 | Labels | Required for an activity to exist | Optional, to improve accuracy |
 | Several activities at once | No, one class per window | Yes, each sentence is scored separately |
@@ -1722,6 +1815,89 @@ Toy example for minute 18:31, projected to `[0.85, 0.15, 0.05]`:
 Adding "someone is watering plants" means encoding one more sentence. The head can score it immediately.
 
 The comparison only works because of the alignment training above. **Bolting a sentence-comparison head onto DomusFM would not work**, because DomusFM's vectors were never trained to land near matching words. So the difference between the two models is in **two places**: how the transformer is trained, and how the head scores.
+
+#### The tagger's input and its rows
+
+Every head, the tagger included, takes **HomeFM's contextual minute vectors as input**. The sentences are **not** the tagger's input. They replace the tagger's **per-activity weights**. A classification head has two parts: its input, and one reference row per activity that the input is scored against. Only the source of the rows differs:
+
+```
+DomusFM:   score(Cook)     = W_Cook · minute_vector + b_Cook
+           W_Cook is learned from labelled cooking examples. A new activity needs new weights, so labels and training.
+
+HomeFM:    score(cooking)  = σ( a · cos( P(minute_vector), Q(text_encoder("someone is cooking")) ) + b )
+           P, Q, a and b are shared by ALL activities. The only activity-specific part is the sentence.
+```
+
+| | DomusFM head | HomeFM tagger |
+|---|---|---|
+| Input | The model's contextual vector | HomeFM's contextual minute vector |
+| Activity-specific part | A learned weight row per activity | The activity's sentence |
+| Learned parts | Weights and bias for **each** activity | P, Q, a scale `a` and a bias `b`, **shared** by all activities |
+| New activity | New row → labels → training | New sentence → nothing to train |
+
+**How the tagger is trained, on HomeFM's embeddings:**
+
+1. **Pretraining, game 3 (alignment).** Pairs of minutes and sentences pull `P(minute vector)` and `Q(sentence vector)` together when they match and apart when they do not. This trains P, Q, `a`, `b` and HomeFM itself.
+2. **Optional fine-tuning with a few labels.** Labels are turned into sentences ("Cook" → "someone is cooking"), and the same training continues on the target home.
+3. **Use.** For a new activity ("someone is vacuuming"), `Q(text_encoder(sentence))` gives a new reference row instantly, and every minute's `P(minute vector)` is scored against it. Nothing new is trained, because P and Q have learned to match minutes with sentences in general.
+
+Only the tagger builds its rows from sentences. The next-event head uses device rows from the device registry (§6.5). The start/end, occupancy, anomaly and device-health heads are ordinary learned heads or engines on the same contextual vectors (§9).
+
+#### P and Q: two small neural networks
+
+P and Q are small **two-layer neural networks**, both of the `ProjectionHead` class used by game 3 (`LanguageAlignment`):
+
+```
+input vector → Layer 1: linear (same size in and out) → GELU (a gentle bend) → Layer 2: linear (down to 128) → normalise to length 1
+```
+
+| | P (minute vectors) | Q (sentence vectors) |
+|---|---|---|
+| Input | HomeFM's contextual vector (256 numbers in the corpus configuration) | MiniLM's sentence vector (384 numbers) |
+| Layer 1 | 256 → 256 | 384 → 384 |
+| Layer 2 | 256 → 128 | 384 → 128 |
+| Output | 128 numbers, length 1 | 128 numbers, length 1 |
+| Learnable numbers | About 99,000 | About 197,000 |
+
+Two more learned numbers, the scale `a` and the bias `b`, turn closeness into a match score.
+
+- **Why two layers, not one.** The device projection in §7.4 is a single linear layer: it resizes and tunes one kind of vector. P and Q translate between two different "languages", sensor minutes and words, so they need the extra layer and the bend to learn curved relationships.
+- **Why normalise to length 1.** The comparison then measures only direction (cosine similarity: 1 same meaning, 0 unrelated, −1 opposite). Without it, a minute with a large vector could score high against every sentence.
+- **How they are trained.** Only in game 3, together with HomeFM, while MiniLM stays frozen, so Q is the only part that adapts on the sentence side. After training they are kept and used by the tagger and the search tool.
+
+They work like two interpreters at a meeting: P translates from "sensor language", Q from English, both into one shared language, and training is practice on known pairs until "stove on, kitchen motion" and "someone is cooking" come out as the same phrase.
+
+#### The same trick at both ends of the model
+
+Describing things **in words**, instead of learning separate numbers for each one, is used twice:
+
+```mermaid
+flowchart LR
+    subgraph IN["Input end: devices (§6.5)"]
+        D1["device M014"] --> D2["ceiling in kitchen,<br/>motion sensor"] --> D3["text encoder<br/>(frozen)"] --> D4["device numbers<br/>ingredient"]
+    end
+    subgraph MID["HomeFM"]
+        EV["event vector"] --> MV["minute vector"] --> TR["transformer"] --> CV["contextual<br/>minute vector"]
+    end
+    subgraph OUT["Output end: activities (§7.5)"]
+        A1["activity cooking"] --> A2["someone is cooking<br/>food in the kitchen"] --> A3["text encoder<br/>(frozen)"] --> A4["activity row<br/>comparison target"]
+    end
+    D4 --> EV
+    CV --> P["P"] --> CMP["compare"]
+    A4 --> Q["Q"] --> CMP
+    CMP --> SC["cooking 0.93"]
+```
+
+| | Input end: device registry | Output end: activity tagger |
+|---|---|---|
+| Described in words | Each device | Each activity |
+| Example sentence | "ceiling in kitchen, motion sensor" | "someone is cooking food in the kitchen" |
+| Instead of | Learned numbers per device code (`M014`, `M031`…) | A learned weight row per activity |
+| Role of the sentence's numbers | An **ingredient** mixed into the event vector | A **target** each minute is compared against |
+| New thing | New device → new registry row, no retraining | New activity → new sentence, no labels |
+| Needs special training? | No: the model simply learns to use the numbers | **Yes: alignment (game 3)**, so minutes and activity sentences become comparable |
+
+"A sentence instead of learned weights" (§1.1) refers to the **output end**. The device registry applies the same idea at the **input end**, where no alignment is needed because the sentence's numbers are an ingredient rather than something to compare against.
 
 #### Limits
 
@@ -2217,7 +2393,7 @@ DomusFM's game trains none of these directly, which fits its measured results.
 
 #### Evidence so far
 
-The 77-home DomusFM run (2026-09-24), activity recognition with 5 % of labels on held-out homes, 6 of 7 finished:
+The 77-home DomusFM run (2026-09-24), activity recognition with 5 % of labels on the 7 held-out homes:
 
 | Test home | With DomusFM pretraining | Without pretraining |
 |---|---|---|
@@ -2227,8 +2403,10 @@ The 77-home DomusFM run (2026-09-24), activity recognition with 5 % of labels on
 | hh105 | 0.36 | **0.41** |
 | hh110 | 0.32 | 0.33 |
 | hh119 | 0.35 | **0.41** |
+| hh122 | 0.38 | **0.43** |
+| **Mean** | **0.385** | **0.435** |
 
-DomusFM's game is solved almost immediately and gives no gain, and mostly a loss (full results in [DOMUSFM_REPRODUCTION.md](DOMUSFM_REPRODUCTION.md)). The HomeFM games are **reasons to expect** better results, not proof. Variant E (games 1 + 2) is implemented and tested on small data, and the 77-home comparison is the next run. It succeeds if the HomeFM loss falls gradually rather than collapsing, and pretrained HomeFM beats HomeFM without pretraining on the held-out homes, especially with 5 % of labels.
+DomusFM's game is solved almost immediately and gives no gain: pretraining is worse on 6 of 7 homes, by 0.05 on average (0.07 with 30 % of labels), and makes no difference to next-30 prediction (full results in [DOMUSFM_REPRODUCTION.md](DOMUSFM_REPRODUCTION.md)). The HomeFM games are **reasons to expect** better results, not proof. Variant E (games 1 + 2) is implemented and tested on small data, and the 77-home comparison is the next run. It succeeds if the HomeFM loss falls gradually rather than collapsing, and pretrained HomeFM beats HomeFM without pretraining on the held-out homes, especially with 5 % of labels.
 
 ### 8.7 Why games 1 and 2 (the rationale for variant E)
 
