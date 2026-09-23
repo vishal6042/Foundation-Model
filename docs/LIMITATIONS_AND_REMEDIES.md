@@ -24,7 +24,7 @@ Each limitation answers the same questions:
 | [L7](#l7--it-knows-what-comes-next-but-not-when) | Forecast without timing | Knows what comes next, not when | Predicts each next event with a range of likely times | ✅ head · 📐 overdue checks |
 | [L8](#l8--its-knowledge-cannot-be-searched-with-words) | Not searchable by text | Its knowledge cannot be searched with a question | A "map of meanings" shared by minutes and sentences | 📐 |
 | [L9](#l9--it-cannot-hear-or-see) | No sound or camera | Cannot hear a baby cry or see a parcel | On-hub sound and camera detectors send short tags | 📐 (event format ✅) |
-| [L10](#l10--it-learned-from-a-small-old-set-of-homes) | Small, old training data | Never saw smart locks, cameras or robot vacuums | Many more homes, a simulator, pilot and donated homes | ✅ 82 homes · 📐 rest |
+| [L10](#l10--it-learned-from-a-small-old-set-of-homes) | Small, old training data | Never saw smart locks, cameras or robot vacuums | Many more homes, a simulator, pilot and donated homes | ✅ 84 homes · 📐 rest |
 | [L11](#l11--its-practice-game-is-too-easy) | Practice game too easy | Learns sensor tricks instead of behaviour | Three harder, more useful practice games | ✅ A–F · 📐 corpus run, G |
 
 Several limitations share one remedy:
@@ -679,7 +679,7 @@ The obvious fix is "use more homes", so we tested it. We pretrained DomusFM on *
 
 | Source | What it adds |
 |---|---|
-| 82 CASAS homes (✅ loaded) | Many more homes, including unlabelled ones, which are fine for pretraining |
+| 81 labelled CASAS homes + Milan + Aruba (✅ loaded) | Many more homes; unlabelled ones (Milan, Aruba) are fine for pretraining |
 | Multi-person datasets (ARAS, MuRAL, MARBLE) | Families, couples, who did what (L4) |
 | Energy datasets (REFIT: 20 UK homes, about 2 years, per appliance; UK-DALE, REDD and others) | Real power readings (L2) and normal appliance behaviour |
 | Sound and image datasets (AudioSet, COCO and others) | Training material for the detectors (L9) |
@@ -703,7 +703,7 @@ The obvious fix is "use more homes", so we tested it. We pretrained DomusFM on *
 - Public data still lacks modern devices. Pilots and data donation take time, consent and privacy safeguards.
 - A simulator that is too tidy teaches wrong habits. Simulated data is mixed with real data at a controlled ratio, and **results are only reported on real homes**.
 - Every dataset's licence must be checked (Pecan Street, for example, is restricted).
-- **Status:** loading all 82 CASAS homes and corpus pretraining ✅ (used in the run below). Energy and multi-person datasets, the simulator at scale, pilot homes, data donation and the teacher–student step 📐.
+- **Status:** loading all 84 homes (81 CASAS labelled + Milan, Aruba, UCI B) and corpus pretraining ✅ (used in the run below). Energy and multi-person datasets, the simulator at scale, pilot homes, data donation and the teacher–student step 📐.
 
 ---
 

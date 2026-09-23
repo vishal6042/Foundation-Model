@@ -26,6 +26,7 @@
 8. [Pretraining design](#8-pretraining-design)
    - [8.0 In plain words](#80-in-plain-words)
    - [8.4 Proposed refinements (variant G)](#84-proposed-refinements-variant-g)
+   - [8.5 Setup and training, step by step](#85-setup-and-training-step-by-step)
 9. [Downstream heads and analytics engines](#9-downstream-heads-and-analytics-engines)
 10. [Query agent](#10-query-agent)
    - [10.1 How the agent reads HomeFM outputs](#101-how-the-agent-reads-homefm-outputs)
@@ -1075,6 +1076,36 @@ This is audio–video fusion, and it happens **inside HomeFM**, not in the detec
 
 A Home Token never carries the description text or its numbers, only the row number. When the model reads the token, it fetches that row's numbers from the device registry (§6.5). It works like a phone's contact list: the call history stores a link to "Mum", not her full details on every call. This keeps events tiny, avoids running the text encoder thousands of times a day, and guarantees that every event from one device uses exactly the same numbers.
 
+#### The device code is a lookup key, not an embedding
+
+A frequent confusion: the raw file says `M014`, the device registry holds an embedding of the sentence "ceiling in kitchen, motion sensor", and it can look as if there are two different device embeddings that must somehow match. **There is only one.** The code `M014` (or its row number in the Home Token) is **never turned into numbers**. It is only used to **look up** the sentence's embedding, as a phone looks up a caller's number in its contacts to show "Mum".
+
+```mermaid
+flowchart LR
+    RAW["Raw event<br/>18:31:20 · M014 · ON"] --> KEY["Code M014<br/>(lookup key only)"]
+    KEY --> TBL[("Device registry<br/>M014 → row 0")]
+    TBL --> DEV["Sentence embedding of row 0<br/>ceiling in kitchen, motion sensor<br/>[0.6, 0.3, 0.2, 0.1]"]
+    RAW --> VAL["Value: ON"]
+    RAW --> TIM["Time: 18:31 Tuesday<br/>75 s since the last event"]
+    RAW --> MET["Type: motion<br/>confidence 1.0"]
+    DEV --> FUSE["Attribute fusion<br/>(learned, §7.4 step 1)"]
+    VAL --> FUSE
+    TIM --> FUSE
+    MET --> FUSE
+    FUSE --> EV["Event vector<br/>[0.5, 0.4, 0.3, 0.2]"]
+```
+
+The sentence embedding and the event vector are different numbers, but they do not need to match: the sentence embedding is an **ingredient** of the event vector, like flour in a cake. The event vector adds the value, the time and the type.
+
+| | Sentence embedding | Event vector |
+|---|---|---|
+| Made from | The device sentence, by the frozen text encoder | Sentence embedding **+** value + time + type, by HomeFM's attribute fusion |
+| How many | One per device | One per event |
+| Made when | Once, at setup | Every time an event is read (every training round, and live) |
+| Learned? | No, the text encoder never changes | Yes, attribute fusion learns during training |
+
+**Why the sentence is needed at all.** Device codes mean nothing on their own and differ between homes: `M014` is kitchen motion in hh101 but bedroom motion in hh102, and kitchen motion is `M031` in hh102 and `binary_sensor.motion_3` in a Home Assistant home. The sentence gives every home's kitchen motion sensor the **same** numbers whatever its code, and gives the bedroom sensor **different** numbers. That is what lets one model learn "kitchen motion + stove in the evening = cooking" once across 77 homes, understand a new home's devices without retraining, and make a sensible first guess about device types it never trained on (a "front door in hallway, lock sensor" lands near "front door in hallway, contact sensor"). Learning separate numbers per code instead would work only inside one home, which is why DomusFM introduced sentence-described devices and HomeFM keeps them.
+
 #### Where text appears in raw data
 
 | Raw data | Text in it | What happens to it |
@@ -1770,6 +1801,193 @@ followed by Stage 4 (weak supervision and per-home adaptation) unchanged.
 - **Real data:** pretraining gives a measurable gain over no pretraining on UCI B and hh101, which DomusFM's objective did not.
 
 **Implementation notes.** G1 and G2 extend `structured_mask` in `src/homefm/objectives/masking.py`; G3 adds a head on the causal stream in `src/homefm/objectives/next_event.py` and reuses the EMA target from `latent_mask.py`; G4 changes the positive mask in `alignment.py`; G5 is a small loss term shared by the latent objectives. A `configs/objectives/G_refined.yaml` config would select them.
+
+### 8.5 Setup and training, step by step
+
+This section walks through pretraining from raw dataset files to a trained model file, with one tiny example. It covers **setup and training only**. What happens in a home after the model is shipped is in §5.2.
+
+**The big idea.** Training shows the model millions of short stretches of real home history and makes it **play guessing games** on each one. The answer to every guess is already in the data, so no human labels are needed. After each round, the model's learnable numbers are nudged so it would guess better next time. After many rounds it has learned how homes behave.
+
+There are two parts:
+
+- **Preparation** (steps 1–3): done **once**, and saved to disk.
+- **The training loop** (steps 4–9): repeated **thousands of times**.
+
+```mermaid
+flowchart TB
+    subgraph PREP["Preparation (once)"]
+        direction LR
+        P1["1. Raw dataset lines<br/>time · device code · reading"] --> P3["3. Home Tokens<br/>time · device row · value · time since last"]
+        P2["2. Device sentences<br/>fridge door in kitchen, contact sensor"] --> TE["Text encoder<br/>(frozen, never trained)"]
+        TE --> DT[("Device table<br/>one embedding per device")]
+        DT -. "row number" .-> P3
+        P3 --> CACHE[("Cache on disk")]
+    end
+    subgraph LOOP["Training loop (thousands of rounds)"]
+        direction TB
+        S4["4. Pick 32 short stretches<br/>(30 minutes each, evenly across homes)"]
+        S5["5. Home Token → event vector<br/>(learnable)"]
+        S6["6. Each minute → one minute vector<br/>(learnable)"]
+        S7["7. Minutes in order → minutes in context<br/>(learnable: transformer)"]
+        S8["8. Play the games<br/>guess the next event · guess a hidden chunk<br/>· match with sentences"]
+        S9["9. Penalty = how wrong<br/>nudge all learnable numbers to reduce it"]
+        S4 --> S5 --> S6 --> S7 --> S8 --> S9
+        S9 -- "next round" --> S4
+    end
+    CACHE --> S4
+    DT -. "device embeddings looked up" .-> S5
+    S9 --> OUT["Trained model file"]
+    OUT --> TEST["Test on unseen homes<br/>with a few labels (§12)"]
+```
+
+#### Preparation (once)
+
+**Step 1 · Raw events from the dataset file.** Home hh102, Tuesday evening, 4 events over 3 minutes:
+
+```
+2012-07-24 18:29:10   Kitchen_D002   OPEN      (fridge door)
+2012-07-24 18:29:14   Kitchen_M014   ON        (kitchen motion)
+2012-07-24 18:30:05   Kitchen_P001   1850      (stove plug, watts)
+2012-07-24 18:31:20   Kitchen_M014   ON        (kitchen motion)
+```
+
+Activity labels in the file (for example `Cook_Begin`) are kept aside. They are not used by games 1 and 2, only turned into sentences for game 3 and used for testing.
+
+**Step 2 · Describe each device in words, and turn the words into numbers once.** The codes are split into item, room and type (the CASAS converter does this automatically), joined into a sentence, and passed through the frozen text encoder. The toy vectors below have 4 numbers; the real ones have 384.
+
+| Code | Sentence | Embedding |
+|---|---|---|
+| Kitchen_D002 | "fridge door in kitchen, contact sensor" | [0.2, 0.7, 0.1, 0.4] |
+| Kitchen_M014 | "ceiling in kitchen, motion sensor" | [0.6, 0.3, 0.2, 0.1] |
+| Kitchen_P001 | "stove in kitchen, power sensor" | [0.1, 0.2, 0.9, 0.3] |
+
+This is the device table (§6.5). The text encoder is only used here, once per device, and is never trained.
+
+**Step 3 · Turn each line into a Home Token.** The same information in one standard format, with the device code replaced by its row in the device table (a lookup key, §6.4):
+
+| Time | Device row | State | Value | Time since previous event |
+|---|---|---|---|---|
+| 18:29:10 | fridge door | ON (open) | — | 2 min |
+| 18:29:14 | kitchen motion | ON | — | 4 s |
+| 18:30:05 | stove | — | 1,850 W | 51 s |
+| 18:31:20 | kitchen motion | ON | — | 75 s |
+
+The tokens are saved to a cache on disk, so the slow parsing happens once. Preparation also holds out whole test homes that pretraining never sees (the 7 held-out homes in §12) and cuts each home's history into 30-minute windows, one every 10 minutes.
+
+#### The training loop (repeated)
+
+**Step 4 · Pick short stretches.** The model cannot read months at once, so each round takes **32 stretches of 30 minutes** (our example uses 3 minutes), chosen **evenly across homes**: first a home at random, then a stretch inside it. Otherwise a huge home (hh113 has 2.3 million events) would dominate.
+
+**Step 5 · Turn each Home Token into an event vector (learnable).** Each token's four facts are combined by attribute fusion (§7.4 step 1):
+
+| Fact | For the stove token |
+|---|---|
+| What device | The stove's embedding, looked up in the device table: [0.1, 0.2, 0.9, 0.3] |
+| Value | 1,850 W |
+| When | 18:30 Tuesday, 51 s after the previous event |
+| Type and confidence | Power reading, 1.0 |
+
+```
+stove token  →  event vector [0.3, 0.1, 0.8, 0.5]
+```
+
+**Step 6 · Squeeze each minute into one vector (learnable).** The events are grouped by minute, and the moment encoder (§7.4 step 2) makes one vector per minute. A minute with no events still gets a "nothing happened" vector.
+
+```
+minute 18:29 : fridge door + kitchen motion  →  [0.4, 0.5, 0.2, 0.2]
+minute 18:30 : stove                         →  [0.2, 0.2, 0.8, 0.4]
+minute 18:31 : kitchen motion                →  [0.5, 0.3, 0.3, 0.1]
+```
+
+**Step 7 · Read the minutes in order (learnable: the transformer).** The stream transformer changes each minute's vector to include what is around it:
+
+```
+18:30 alone:       "stove on"
+18:30 in context:  "stove on, just after the fridge opened and someone came into the kitchen"
+                   → [0.2, 0.3, 0.9, 0.6]
+```
+
+**Step 8 · Play the games: guess, then check.** The answers are already in the data.
+
+*Game 1, guess the next event.* Reading forwards only, after each event the model guesses the next one: which device, what value, and how long until it happens.
+
+| After seeing | The model guesses | What actually came next | Result |
+|---|---|---|---|
+| Fridge door open | Kitchen motion, in about 5 s | Kitchen motion after 4 s | Close |
+| Kitchen motion | Fridge closes, in about 20 s | **Stove on** after 51 s | Wrong |
+| Stove on | Kitchen motion, in about 1 min | Kitchen motion after 75 s | Close |
+
+*Game 2, guess a hidden chunk.* Minute 18:30 is hidden completely:
+
+```
+18:29  fridge + motion    |    18:30  [HIDDEN]    |    18:31  motion
+```
+
+The model guesses what 18:30 was like. The correct answer comes from a slowly updated copy of the model that saw 18:30. Something like "activity in the kitchen, probably cooking-related" scores well.
+
+*Game 3, match with a sentence* (variant F only). If the stretch has a label, for example `Cook` turned into "a resident is cooking in the kitchen", the stretch's vector is pulled towards that sentence and pushed away from non-matching ones.
+
+Each game gives a **penalty**: how wrong the guesses were.
+
+```
+penalty this round = penalty(game 1) + penalty(game 2) [+ penalty(game 3)] = 2.7
+```
+
+**Step 9 · Nudge the numbers, and repeat.** The training algorithm (backpropagation with the AdamW optimiser) works out how to change each of the model's roughly 8 million learnable numbers so the penalty would be smaller, changes them a tiny bit, and goes back to step 4 with 32 new stretches. The slowly updated copy used in game 2 moves 0.4 % of the way towards the model after each round. **Only the learnable parts change**: steps 5, 6 and 7 and the game heads. The text encoder of step 2 never changes. A healthy run looks like this (illustrative numbers):
+
+```
+round      1 :  penalty 5.8   (random guessing)
+round  1,000 :  penalty 3.1   (learned: motion follows door openings)
+round 10,000 :  penalty 2.2   (learned: stove + evening → kitchen stays busy)
+round 20,000 :  penalty 1.9   (learned: routines of many homes)
+```
+
+A penalty that falls gradually is the sign of real learning. DomusFM's penalty fell to about 0.001 within 1,000 rounds, the sign of a game that was too easy (§4.1 L11).
+
+#### After training
+
+The trained model is saved to a file, together with the version of the text encoder it was trained with. The device tables are not inside it; each home builds its own (§6.5). The model is then **tested** on homes it never saw: it is given a few labelled examples (5 % or 30 %) and compared with the same model without pretraining and with DomusFM (§12). Later, a large teacher trains a small student that fits on the home hub (§7.3).
+
+#### The three games
+
+| | Game 1 | Game 2 | Game 3 |
+|---|---|---|---|
+| **In one line** | Predict what comes next, and when | Hide a big chunk and guess its meaning | Match stretches of activity with sentences |
+| **Example** | After "fridge open, stove on": "kitchen motion in about 30 s" | 18:30–18:36 hidden between "fridge opened" and "dining light on": "probably cooking" | Stove + kitchen motion ↔ "someone is cooking" (together), ↔ "someone is sleeping" (apart) |
+| **The answer comes from** | The event that actually came next | A slowly updated copy of the model that saw everything | The sentence paired with the stretch |
+| **Needs labels?** | No | No | Needs sentences |
+| **Teaches** | Routines and timing | How the parts of a home fit together | Words for activities |
+| **Enables later** | "When" forecasts, the surprise score for anomalies (L6, L7) | Robust understanding, filling gaps | Naming new activities, search by meaning (L1, L8) |
+| **What gets hidden or predicted** | The next event | A block of minutes, a device, a room, a signal type, or rare devices | Nothing hidden |
+| **Technical name** | Marked temporal point process (next event) | JEPA, structured latent masking | SigLIP language alignment |
+| **Variant** | D | C | added in F |
+
+Variant **E** = games 1 + 2 (the planned comparison against DomusFM). Variant **F** = games 1 + 2 + 3. DomusFM plays a single game ("hide a few events, then find your own copy among others"), which is too easy on home data (§8.1).
+
+#### Real settings for the corpus run
+
+| Setting | Value (`configs/homefm_corpus.yaml`) |
+|---|---|
+| Training homes | 77: all 84 homes (81 labelled CASAS homes + Milan + Aruba + UCI B) minus the 7 test homes. The same pool as the DomusFM run. |
+| Stretch length | 30 minutes of 60-second minutes, at most 256 events |
+| Stretches start every | 10 minutes |
+| Stretches per round | 32 |
+| Rounds | 20,000 (the first 500 with a smaller learning rate) |
+| Learning rate | 0.0003 |
+| Model size | 256 numbers per vector, 6 transformer layers, about 8 million learnable numbers |
+| Games | 1 + 2 (variant E). Game 2 hides 3–10 minutes at a time, or a device, room or signal type. |
+| Slowly updated copy | 99.6 % old + 0.4 % new after each round |
+
+#### Status
+
+| Step | Status |
+|---|---|
+| Preparation: converters, device tables, Home Tokens, cache (84 homes), held-out split, windows | ✅ |
+| Labels turned into sentences for game 3 | ✅ basic, small data · 📐 corpus scale |
+| Training loop with games 1 + 2 (variant E) | ✅ code, tested on small data · the corpus run has not started |
+| Game 3 (variant F) | ✅ code, small data only |
+| Fine-tune and test protocol | ✅ (shared with the DomusFM run) |
+| Teacher → student | 📐 |
 
 ## 9. Downstream heads and analytics engines
 
