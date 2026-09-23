@@ -12,6 +12,7 @@
 3. [Requirements](#3-requirements)
 4. [Prior work: DomusFM and its gaps](#4-prior-work-domusfm-and-its-gaps)
    - [4.1 Limitations of DomusFM against our requirements, with scenarios](#41-limitations-of-domusfm-against-our-requirements-with-scenarios)
+   - [4.2 DomusFM vs HomeFM, step by step](#42-domusfm-vs-homefm-step-by-step)
 5. [System architecture](#5-system-architecture)
 6. [Data model](#6-data-model)
 7. [HomeFM model architecture](#7-homefm-model-architecture)
@@ -102,6 +103,92 @@ For example, "someone is vacuuming" gives a new activity immediately, without co
 | **Confidence** | How sure the system is, shown with every answer. | "2 times (high confidence)" |
 
 **The whole flow in one line:** sensors report **events** → the model reads them **minute by minute, in context** → **heads** say what each minute looks like → minutes are joined into **episodes** and written into the **diary** → a user asks a question → the **agent** looks it up in the diary, or **searches by meaning** if it is not there → it answers with **times and confidence**. §10.2 walks through this flow in full for one question.
+
+**Technical keywords, in plain words**
+
+These terms appear in the technical sections (§4.2, §7–§9). Each has a one-line plain meaning.
+
+*Building blocks*
+
+| Keyword | Plain meaning |
+|---|---|
+| **Transformer** | The standard neural-network design behind modern AI models. It reads a sequence and lets every item look at the other items to understand it in context. |
+| **Attention / self-attention** | The mechanism inside a transformer: for each item, decide how much to "look at" each other item. |
+| **Layer / head** | A transformer is a stack of layers. Each layer has several heads that look for different kinds of relationships at the same time. |
+| **d (hidden size)** | How many numbers are in each vector inside the model (384 for DomusFM, 256 for HomeFM's corpus configuration). |
+| **Parameters** | The numbers the model learns during training. More parameters means a bigger model (DomusFM 28.6M in our reimplementation, HomeFM 8.0M). |
+| **MLP / linear layer** | The simplest learned building blocks: they turn one vector into another. |
+| **Text encoder (MiniLM)** | An existing, small language model (`all-MiniLM-L6-v2`) that turns any sentence into 384 numbers. Both models use it **frozen**: it is never retrained. |
+| **Frozen** | A part of the model whose numbers are not changed during training. |
+| **Projection head** | A small learned layer that moves vectors into a shared space, so two different kinds of vector can be compared. |
+
+*Describing events and time*
+
+| Keyword | Plain meaning |
+|---|---|
+| **Attribute** | One piece of an event: which device, which room, the value, the time, the source. |
+| **Attribute fusion** | Combining an event's attributes into one vector, letting them inform each other first. |
+| **Cyclic encoding** | Writing time of day and day of week as positions on circles, so 23:59 and 00:01 come out close together. |
+| **Δt (delta-t)** | "Time since": for example, seconds since the previous event, or until the next one. |
+| **Window** | The slice of history the model reads at once. DomusFM uses 30 events, and HomeFM uses a span of minutes. |
+| **Stride** | How far the window moves each step. DomusFM's stride of 1 means one new window for every new event. |
+| **Positional encoding** | Information that tells the model the order of items in a sequence. |
+| **Latent** | A learned internal vector that is not directly an input or an output. |
+| **Perceiver** | A design in which a few learned "question" vectors (latents) read a variable number of inputs and summarise them into a fixed size. HomeFM uses it to turn "any number of events in a minute" into one vector. |
+| **Segment softmax** | A trick for computing attention separately inside each minute, for all minutes at once. It is fast and uses little memory. |
+| **Stream transformer** | HomeFM's main transformer, which reads the sequence of minute vectors. |
+| **Event read-out** | A small transformer that goes back from minutes to single events, when event-level detail is needed. |
+| **Day token** | One vector that summarises a whole day, so the model can compare weeks. |
+
+*Reading modes and speed*
+
+| Keyword | Plain meaning |
+|---|---|
+| **Causal** | Reads only the past, never the future. This is required for live use and for forecasting. |
+| **Bidirectional** | Reads past and future together. This is better for looking back and correcting. |
+| **KV cache** | Keeps the results already computed for earlier minutes, so a new minute costs one step instead of re-reading everything. |
+| **Inference** | Running the trained model on new data, as opposed to training it. |
+| **Edge / hub** | The small computer inside the home where the model runs, so data stays at home. |
+
+*Training*
+
+| Keyword | Plain meaning |
+|---|---|
+| **Self-supervised** | Training without human labels: the data itself provides the answers, for example by hiding part of it and guessing it. |
+| **Masking** | Hiding part of the input so the model has to guess it. |
+| **Loss** | A score of how wrong the model is. Training pushes it down. A loss near zero straight away means the game is too easy. |
+| **Contrastive learning** | Training by comparison: pull two views of the same thing together, and push different things apart. |
+| **InfoNCE** | DomusFM's contrastive loss: "among everything in this batch, pick out my own masked copy". |
+| **Positive / negative** | In contrastive learning, a positive is a pair that should match, and a negative is a pair that should not. A **false negative** is a pair pushed apart even though it is really the same behaviour (two ordinary nights of sleep). |
+| **Temporal point process (TPP)** | A model of *when* events happen, not only which. "Marked" means it also predicts what the event is. |
+| **Log-normal mixture** | A flexible way to predict a waiting time: a blend of several bell curves on a log scale, so "in 10 seconds" and "in 3 hours" can both be likely. |
+| **NLL (negative log-likelihood)** | How surprised the model is by what actually happened. Low means expected, high means unusual. HomeFM uses it as the **surprise score** for anomalies. |
+| **JEPA** | "Predict the hidden part's meaning, not its raw details." The model fills in hidden minutes' vectors instead of exact events. |
+| **EMA target** | A slowly updated copy of the model (an exponential moving average of its weights) that produces the answers JEPA is trained to predict. It keeps training stable. |
+| **Collapse** | A failure where the model outputs the same vector for everything, which makes some losses trivially low. |
+| **SigLIP** | A way to match minutes with sentences that scores each pair separately as match or no-match, so one minute can match several sentences. |
+| **Alignment** | Training minute vectors and sentence vectors to live in the same space, so they can be compared. |
+| **CLIP** | The well-known image–text model that introduced this kind of alignment. HomeFM applies the same idea to sensor minutes. |
+| **Gradient reversal / home-adversarial** | A training trick that stops the model from learning *which home* the data came from, so it learns behaviour rather than one home's quirks. |
+| **Pretraining / fine-tuning** | Pretraining learns general skills from lots of data without labels. Fine-tuning then adjusts the model for one task with a few labels. |
+| **Ablation / variant (A–G)** | Running the same setup with one part changed, to measure what that part contributes. |
+
+*Outputs and evaluation*
+
+| Keyword | Plain meaning |
+|---|---|
+| **Classifier / class** | A head that picks one item from a fixed list. Each item is a class. |
+| **Tagger** | HomeFM's activity head: it scores every concept sentence for every minute, and several can be "on" at once. |
+| **Multi-label** | More than one label can be true at the same moment (cooking *and* baby crying). |
+| **Cosine similarity** | A score from −1 to 1 of how closely two vectors point the same way. It is how "close in meaning" is measured. |
+| **Hysteresis** | Using a higher threshold to switch on than to switch off, so a flickering score does not create many tiny episodes. |
+| **Calibration** | Adjusting scores so that "0.9" really means about 90 % likely. |
+| **Occupant slot (person card)** | A learned vector for each resident or pet that events are assigned to, so the model can tell people apart. |
+| **Zero-shot** | Recognising something with no labelled examples of it. |
+| **Weighted F1** | The accuracy score for activity labels, which balances precision and recall and weights each activity by how often it occurs. |
+| **Multiset F1** | The accuracy score for next-k prediction: how well the predicted bag of events matches the true bag, ignoring order. |
+| **Leave-one-dataset-out** | Testing on a home the model never saw during pretraining, one home at a time. |
+| **Fold / cross-validation** | Splitting the test home's data into parts and testing on each part in turn. The "±" in results is the spread across folds. |
 
 ## 2. Goals and non-goals
 
@@ -365,6 +452,125 @@ flowchart LR
 - **Attribute-level fusion** of what, where, state and time.
 - **Edge feasibility:** 36M parameters, < 500 MB, ~10 ms per window on a Celeron CPU.
 - **Leave-one-dataset-out evaluation**, which we adopt as our protocol.
+
+### 4.2 DomusFM vs HomeFM, step by step
+
+This section follows the data through both models in order. Each step has a plain-words comparison, then the technical detail, then its status in our code. Terms in **bold** are defined in §1.1.
+
+Status: ✅ implemented in the scaffold (`src/homefm/`) · 📐 designed, not implemented yet. DomusFM is fully reimplemented in `src/homefm/baselines/domusfm/`.
+
+#### Step 1 · What goes in
+
+- **DomusFM:** only on/off signals ("kitchen motion ON", "fridge door OPEN"). Meters that report amounts (power, temperature) must be turned into on/off first, and the amount is thrown away.
+- **HomeFM:** any signal: on/off, numbers (1,850 W, 23 °C), and tags from sound and camera detectors ("baby crying", "parcel at door"), each with a confidence. The detectors run on the home hub, so raw audio and video stay at home.
+- **Why it matters:** energy, appliance-fault, crying and parcel questions are impossible without numbers, sound and camera tags.
+- **Technically:** DomusFM takes `(timestamp, sensor, status ∈ {OFF, ON})` and binarises continuous signals in pre-processing (paper §3.1). A HomeFM **Home Token** carries `ts, entity, modality, state, value, confidence, source` (§6.1).
+- **Status:** ✅ schema, converters and batching · 📐 the audio and vision detectors themselves.
+
+#### Step 2 · How each event is described
+
+- **DomusFM:** each device is described in words ("motion sensor, kitchen, ceiling"), and those words become a vector. This lets the model work in a home it has never seen. **HomeFM keeps this idea.**
+- **HomeFM:** the same words, plus the value (1,850 W), how long since the last event, where the signal came from, and how confident it is.
+- **Technically:**
+  - DomusFM fuses 5 attribute vectors per event by **attribute fusion** (one self-attention layer over the attributes, then mean-pooled): item, sensor type and room (frozen **MiniLM** text vectors), status (a learned embedding over ON, OFF and MASK), and time (**cyclic encoding** of day and hour, plus a learned seconds-in-hour embedding).
+  - HomeFM fuses 4 attribute vectors the same way: entity text (MiniLM + a linear layer), value (state embedding + an MLP of the number), time (cyclic encoding + **Δt** features: time since the previous event and since this device last fired), and meta (modality + confidence).
+- **Status:** ✅ (`model/embedder.py`).
+
+#### Step 3 · How time is cut up
+
+- **DomusFM:** looks at the last **30 events**. The time this covers depends on how busy the house is: about 2 minutes while cooking, about 6 hours at night.
+- **HomeFM:** cuts time into **1-minute slots**, and summarises all events in a minute into one **moment** vector. One minute is always one minute.
+- **Why it matters:** "the last 4 hours" is always 240 steps. A 40-minute cooking session is not chopped up, and a quiet night is not blurred into one blob.
+- **Technically:**
+  - DomusFM: count-based windows of 30 events with stride 1 and no positional encoding.
+  - HomeFM: a **Perceiver**-style **moment encoder**. Four learned **latent** queries attend to the events inside each minute. A **segment softmax** processes all minutes in one pass. A learned "quiet" key makes an empty minute a well-defined "nothing happened" vector. The event count and the minute's time are added.
+- **Status:** ✅ (`model/moment_encoder.py`).
+
+#### Step 4 · How far back it remembers
+
+- **DomusFM:** 30 events only. It has no memory of yesterday or last week.
+- **HomeFM:** reads hours of minutes in order, plus **daily summaries** for weeks.
+- **Why it matters:** "Is Mum sleeping worse than last month?" and "Is the fridge getting worse?" need weeks of memory.
+- **Technically:**
+  - DomusFM: a 12-layer, 12-head transformer with d = 384. Our reimplementation has 28.6M parameters; the paper reports 36M, and the gap is in details the paper leaves unspecified.
+  - HomeFM: a **stream transformer** over minutes, with learned positions up to 1,024 minutes (about 17 h). The corpus configuration is d = 256, 6 layers, 8.0M parameters. For weeks, a second small transformer runs over one **day token** per day.
+- **Status:** ✅ minute stream · 📐 day tokens.
+
+#### Step 5 · Reading live, and looking back
+
+- **DomusFM:** reads each 30-event window as a whole, and redoes it from scratch for every new event.
+- **HomeFM:** two modes with the same weights:
+  - **Live:** reads only the past, minute by minute, and keeps earlier work instead of redoing it. This is fast on a small home hub.
+  - **Look-back:** about once an hour, it re-reads recent hours in both directions to fix things. For example, once dinner has ended it can set the correct end time.
+- **Technically:**
+  - DomusFM: **bidirectional** attention with stride 1, so each new event re-encodes the whole window through 12 layers.
+  - HomeFM **causal** mode masks future minutes, and with a **KV cache** each new minute costs one token. Bidirectional mode is used for look-back refinement, stored embeddings and pretraining.
+  - A small **event read-out** transformer gives event-level detail for next-event prediction. It uses only the previous minute's context, so it never sees the future.
+- **Status:** ✅ causal and bidirectional modes, event read-out · 📐 KV-cache streaming.
+
+#### Step 6 · How it is trained (the practice game)
+
+- **DomusFM:** one game: "hide a few events, then check whether the two versions of the window match". On real home data this is **too easy**: in our runs the loss falls to about 0.001 almost immediately, and pretraining gives little or no gain.
+- **HomeFM:** three harder, more useful games:
+  1. **Predict the next event and when it will happen** ("kitchen motion, in about 2 minutes"). This teaches routines and timing, and gives a surprise score.
+  2. **Hide a big chunk and guess what it meant:** 10 minutes, a whole room, or all power meters. The model cannot win by copying a paired ON/OFF event.
+  3. **Match minutes with sentences:** a cooking minute should sit near "someone is cooking". This connects the model to words.
+- **Technically:**
+  - DomusFM uses **contrastive learning** with **InfoNCE**. The mean-pooled embeddings of a window and its masked copy are the positive pair, and the other windows in the batch are the negatives. Phase 1 masks one attribute per selected event, and phase 2 masks whole events with the event layer frozen.
+  - HomeFM game 1 is a **marked temporal point process**. It predicts which device fires next (by dot product with the text vectors of the home's own devices), its state and value, and **Δt** (a **log-normal mixture**). The negative log-likelihood (**NLL**) is the surprise score.
+  - HomeFM game 2 is **JEPA**. A predictor fills in the hidden minutes' vectors, and the targets come from an **EMA** copy of the model that sees everything. Mask families are time blocks, devices, rooms, modalities and rare devices.
+  - HomeFM game 3 is **SigLIP** alignment. Minute and sentence vectors pass through **projection heads** into a shared space, and every pair is scored as match or no-match. Repeats of the same routine are therefore not pushed apart.
+  - Variant F also adds **gradient reversal**, so the model does not learn which home the data came from. Variant E = games 1 + 2, and F adds game 3 (§8.3). Variant G adds the refinements in §8.4.
+- **Status:** ✅ A–F (`objectives/`) · 📐 per-minute alignment (it is per-window today) and variant G.
+
+#### Step 7 · What it outputs (the heads)
+
+- **DomusFM:** two outputs: one activity label from a fixed list learned from labels, and the next 30 events as an unordered bag with no timing.
+- **HomeFM:** many outputs from each minute:
+
+| Head | Answers | Status |
+|---|---|---|
+| Next event with timing | What happens next, and **when** | ✅ |
+| Activity by sentence (tagger) | Any activity, including new ones, and several at once | 📐 |
+| Start / end (boundary) | Where an activity begins and ends, so it can be counted | 📐 |
+| People (occupancy) | How many people per room, and who | 📐 |
+| Surprise / anomaly | How unusual this is for this home | Surprise ✅ · engine 📐 |
+| Device health | Stuck sensor, dying battery, longer fridge cycles | 📐 |
+
+- **Technically:**
+  - DomusFM activity head: `Linear(d, n_classes)` on the last event's vector, trained with cross-entropy on 5–30 % of labels. Next-k head: presence (binary cross-entropy) plus count per event type (squared error) on the pooled window, scored by multiset F1.
+  - HomeFM tagger: `σ(a · cos(P(minute), P(text(concept))) + b)`. A concept's reference vector comes from its sentence instead of a learned weight row, so a new concept is a new sentence (§1.1).
+
+#### Step 8 · From outputs to an answer
+
+- **DomusFM:** stops at the labels. It has no storage, no counting and no way to ask questions. It is a research model evaluated on benchmarks.
+- **HomeFM:** a full system around the model:
+  1. Minute labels are joined into **episodes** ("cooking 18:30–19:22") and saved in the episode store.
+  2. Minute vectors are saved in a **vector store** for search by meaning.
+  3. An **LLM agent** reads the question, calls tools and answers with times, evidence and confidence (§10, worked example in §10.2).
+- **Technically:** the episode builder applies **hysteresis** smoothing, merges gaps shorter than `g(concept)` and drops episodes shorter than `min_duration(concept)`. The stores are SQL tables plus a vector index (fp16, tagged with the model version). The agent is a local 3–8B LLM with function calling.
+- **Status:** 📐.
+
+#### Step 9 · People in the home
+
+- **DomusFM:** assumes one person lives there. It cannot tell grandma from her grandson or from the dog.
+- **HomeFM:** a **person card** (occupant slot) for each resident and pet, and a people count per room. It uses identity signals (phone presence, camera, radar) where the household allows them. With motion sensors only, it gives an honest range ("1–2 people") instead of a guess.
+- **Technically:** learned occupant-slot vectors that each minute's events attend to (Slot Attention–style), a per-room count regression supervised by camera or radar counts, and `person_id` carried on Home Tokens.
+- **Status:** 📐.
+
+#### Summary
+
+| Step | DomusFM | HomeFM | Status |
+|---|---|---|---|
+| 1. Input | On/off only | On/off + numbers + sound/camera tags | ✅ / 📐 detectors |
+| 2. Event description | Device in words | Same + value + Δt + meta | ✅ |
+| 3. Time unit | Last 30 events | 1-minute moments | ✅ |
+| 4. Memory | 30 events | Hours of minutes + day tokens for weeks | ✅ / 📐 days |
+| 5. Reading | Whole window, recomputed for every event | Live (past only, cached) + hourly look-back | ✅ / 📐 cache |
+| 6. Training game | Hide-and-match (InfoNCE), too easy | Next event + when, JEPA, SigLIP | ✅ A–F |
+| 7. Outputs | 1 label from a fixed list + next-30 bag | Next event, tagger, boundaries, people, surprise, device health | ✅ next event / 📐 rest |
+| 8. Answering | None | Episodes + stores + vector search + LLM agent | 📐 |
+| 9. People | One person assumed | Person cards + per-room counts | 📐 |
 
 ## 5. System architecture
 
