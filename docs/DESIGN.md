@@ -16,8 +16,13 @@
 5. [System architecture](#5-system-architecture)
    - [5.2 Two pipelines: training and live](#52-two-pipelines-training-and-live)
 6. [Data model](#6-data-model)
+   - [6.4 From raw data to Home Tokens](#64-from-raw-data-to-home-tokens)
+   - [6.5 Device registry (the device table)](#65-device-registry-the-device-table)
+   - [6.6 Home onboarding: building the device registry](#66-home-onboarding-building-the-device-registry)
 7. [HomeFM model architecture](#7-homefm-model-architecture)
    - [7.0 In plain words](#70-in-plain-words)
+   - [7.4 Inside one minute: from Home Tokens to the transformer](#74-inside-one-minute-from-home-tokens-to-the-transformer)
+   - [7.5 Making minute vectors comparable with sentences](#75-making-minute-vectors-comparable-with-sentences)
 8. [Pretraining design](#8-pretraining-design)
    - [8.0 In plain words](#80-in-plain-words)
    - [8.4 Proposed refinements (variant G)](#84-proposed-refinements-variant-g)
@@ -868,6 +873,7 @@ Every signal, from any sensor or expert, becomes a Home Token:
 | `state` | int ∈ {OFF, ON, NA} | For binary modality |
 | `value` | float \| None | Scalar reading or patch statistic |
 | `vector` | float[] \| None | Audio / vision embedding (optional) |
+| `tag` | int \| None | Detector tag: a row in the tag vocabulary, e.g. "baby crying" (§6.4). The `entity` is the microphone or camera itself. *Planned.* |
 | `confidence` | float ∈ [0,1] | 1.0 for physical sensors; model score for experts |
 | `source` | enum | `sensor`, `expert`, `homefm` |
 | `person_id` | str \| None | When known (camera, phone presence, wearable) |
@@ -876,7 +882,7 @@ Every signal, from any sensor or expert, becomes a Home Token:
 
 ### 6.2 Home ontology
 
-SAREF/Brick-inspired graph: `Home → Room → Device → Capability`, plus `Resident`, `Pet`, and aliases ("kid" → resident *Aarav*, "grandma's room" → *Bedroom 2*). The **capability registry** records which concepts are observable in this home, so the agent can refuse honestly.
+SAREF/Brick-inspired graph: `Home → Room → Device → Capability`, plus `Resident`, `Pet`, and aliases ("kid" → resident *Aarav*, "grandma's room" → *Bedroom 2*). The **capability registry** records which concepts are observable in this home, so the agent can refuse honestly. The **device registry** (§6.5) is part of the ontology: one row per device, with its description and the numbers the model reads.
 
 ### 6.3 Stores
 
@@ -928,6 +934,329 @@ erDiagram
     EPISODE }o--o{ EVENT : "evidenced by"
     ANOMALY }o--o{ EVENT : "evidenced by"
 ```
+
+### 6.4 From raw data to Home Tokens
+
+Raw data arrives in many shapes: dataset lines (`2012-07-20 10:12:03 M014 ON`), hub state changes (`binary_sensor.kitchen_motion → "on"`), meter readings (`180.5 W`) and detector outputs (`"baby crying", 0.87`). Conversion turns every one of them into the same Home Token (§6.1). It happens in **two phases**:
+
+- **Setup, once per device:** the device's names become one description, and the description becomes numbers (the device registry, §6.5). Detector tags get their own small vocabulary table, set up once per detector model.
+- **Every event:** the reading is converted into a Home Token that **points to** the device's row (and, for detector events, to the tag's row), instead of carrying any text.
+
+```mermaid
+flowchart TB
+    subgraph SETUP["Phase 1: setup, once"]
+        direction LR
+        N["Device names from the hub<br/>name · room · type"] --> DSC["One description<br/>item in room, type sensor"]
+        DSC --> ENC["Frozen text encoder<br/>(MiniLM, 384 numbers)"]
+        ENC --> ROW[("Device registry<br/>one row per device")]
+        TG["Detector tag names<br/>baby crying · dog barking · parcel"] --> ENC2["Frozen text encoder"]
+        ENC2 --> TAB[("Tag vocabulary<br/>one row per tag")]
+    end
+    subgraph EVT["Phase 2: every event"]
+        direction LR
+        RAW["Raw reading<br/>time · device code · state, number or tag"] --> T["Time → ts"]
+        RAW --> D["Device code → device row<br/>(look-up, no text processing)"]
+        RAW --> V["State word → ON / OFF<br/>number → value<br/>tag → tag row + confidence"]
+        RAW --> M["Type · source"]
+        T --> HT["Home Token"]
+        D --> HT
+        V --> HT
+        M --> HT
+    end
+    ROW -. "device row" .-> D
+    TAB -. "tag row" .-> V
+    HT --> FM["HomeFM (§7.4)"]
+    HT --> ES[("Event store")]
+```
+
+#### Phase 1: setup (once per device)
+
+1. **Collect the names the hub already has:** name, room and type (§6.6 explains where they come from).
+2. **Join them into one description** with a fixed pattern: **"{item} in {room}, {type} sensor"**.
+3. **Turn the description into numbers once** with the frozen text encoder, and save the result as the device's row.
+
+| Device code | Names from the hub | Description | Row |
+|---|---|---|---|
+| `M014` | Kitchen Motion · Kitchen · motion | "ceiling in kitchen, motion sensor" | 0 |
+| `fridge_power` | Fridge Plug · Kitchen · power | "fridge in kitchen, power sensor" | 1 |
+| `nursery_mic` | Nursery Mic · Nursery · audio detector | "microphone in nursery, audio sensor" | 2 |
+
+Only **real devices** get a row: the microphone, not "baby crying". What a detector hears or sees is carried by each event as a **tag** that points to the tag vocabulary (below), and the activity itself ("the baby cried from 18:40 to 18:46") is a concept that HomeFM decides later from several signals (see *Devices, observations and activities* below).
+
+4. **Tag vocabulary, once per detector model.** Each detector has a fixed list of tags it can output. Each tag name is turned into numbers once:
+
+| Tag row | Tag | Detector |
+|---|---|---|
+| 17 | "baby crying" | Sound detector |
+| 18 | "dog barking" | Sound detector |
+| 19 | "glass breaking" | Sound detector |
+| 42 | "parcel at door" | Camera detector |
+| 43 | "person at door" | Camera detector |
+
+#### Phase 2: every event
+
+There are three kinds of raw event, and each is converted differently.
+
+**Kind 1: on/off sensor, where the state word becomes ON or OFF.**
+
+```
+Raw:          2026-09-24 18:31:02   M014   "on"
+Home Token:   ts=18:31:02   entity=row 0   state=ON   value=none
+              modality=binary   confidence=1.0   source=sensor
+```
+
+Different hubs use different words for the same state, so they are mapped:
+
+| Raw word | State |
+|---|---|
+| "on", "open", "detected", "motion", "unlocked" | ON |
+| "off", "closed", "clear", "no motion", "locked" | OFF |
+
+**Kind 2: meter, where the number stays a number.**
+
+```
+Raw:          2026-09-24 18:31:05   fridge_power   "180.5 W"
+Home Token:   ts=18:31:05   entity=row 1   state=NA   value=180.5
+              modality=scalar   confidence=1.0   source=sensor
+```
+
+The unit is removed and the number is kept. Readings are emitted only when the value changes meaningfully, not every second.
+
+**Kind 3: detector output, where the device is the microphone or camera and the tag is what it heard or saw.**
+
+```
+Raw:          2026-09-24 18:40:05   nursery_mic   tag="baby crying"   score=0.87
+Home Token:   ts=18:40:05   entity=row 2 (microphone in nursery)   tag=row 17 ("baby crying")
+              modality=audio_tag   confidence=0.87   source=expert   vector=(optional detector embedding)
+```
+
+The device says **where and how** it was observed. The tag says **what** was observed. The confidence says how sure the detector is. A detector may also pass its own embedding of the sound or image in the `vector` field, so HomeFM is not limited to the detector's fixed tag list.
+
+#### Devices, observations and activities are three different things
+
+| Layer | What it is | Example | Where it lives |
+|---|---|---|---|
+| **Device** | A physical sensor or detector input | Nursery microphone, doorbell camera, kitchen motion sensor | Device registry (§6.5) |
+| **Observation** | One thing a device reported, at one moment | "baby-crying sound, 0.87" at 18:40:05 · "baby moving in cot" at 18:40:10 · nursery motion ON | Home Tokens → event store |
+| **Activity** | Something that happened over time, decided from **several** observations | "The baby cried, 18:40–18:46" | Concept in the ontology → HomeFM tagger → episode store (§9.1) |
+
+A sound detector's "baby crying" tag is **evidence**, not the answer. A single tag can be wrong: the TV plays a crying baby, a sibling makes a similar sound, the microphone picks up the neighbour's child. HomeFM decides the **activity** by fusing observations from several devices in the same minutes:
+
+```mermaid
+flowchart LR
+    subgraph OBS["Observations (Home Tokens, 18:40–18:46)"]
+        A["Nursery mic<br/>tag: baby crying, 0.87"]
+        V["Nursery camera<br/>tag: baby moving in cot, 0.80"]
+        MO["Nursery motion<br/>ON at 18:41"]
+        DR["Nursery door<br/>opened 18:41"]
+        TV["Living-room TV plug<br/>off"]
+    end
+    subgraph FM["HomeFM"]
+        MIN["Minute vectors<br/>(all observations fused, §7.4)"]
+        TAGR["Tagger: compare with<br/>concept text: the baby is crying"]
+        MIN --> TAGR
+    end
+    OBS --> MIN
+    TAGR --> EB["Episode builder<br/>cries under 60 s apart = one"]
+    EB --> EP[("Episode store<br/>baby crying 18:40–18:46<br/>confidence 0.94")]
+```
+
+| Evidence | Pushes towards "baby crying" | Why |
+|---|---|---|
+| Sound tag "baby crying" in the nursery | Strongly yes | Direct evidence |
+| Camera: baby moving in the cot | Yes | Awake and restless |
+| A parent opens the nursery door a minute later | Yes | Someone responded |
+| The same sound tag in the living room while the TV is on | Strongly no | Probably the TV |
+| Sound tag, but the cot is empty on camera | No | The baby is not there |
+
+This is audio–video fusion, and it happens **inside HomeFM**, not in the detectors. Each detector stays simple (one input, a fixed tag list), and HomeFM learns how observations from different devices combine. The same pattern applies to every detector-based activity: a parcel is a "parcel at door" tag plus a courier who leaves within seconds plus the door staying closed; a fall is a radar or camera "person fell" tag plus no movement afterwards.
+
+#### What "points to a row" means
+
+A Home Token never carries the description text or its numbers, only the row number. When the model reads the token, it fetches that row's numbers from the device registry (§6.5). It works like a phone's contact list: the call history stores a link to "Mum", not her full details on every call. This keeps events tiny, avoids running the text encoder thousands of times a day, and guarantees that every event from one device uses exactly the same numbers.
+
+#### Where text appears in raw data
+
+| Raw data | Text in it | What happens to it |
+|---|---|---|
+| Device names, rooms, types | Short names ("Kitchen Motion", "Kitchen") | Joined into one description at setup, turned into numbers once |
+| State words | "on", "open", "detected" | Mapped to ON / OFF |
+| Detector tags | "baby crying", "parcel at door" | Looked up in the tag vocabulary. The event's device is the microphone or camera. |
+| Dataset activity labels (training only) | `Cook_Begin`, `Sleep_End` | Not part of the event stream. Used as labels and turned into captions for alignment (§8.2 Stage 3) |
+| Free-text messages | "Your parcel was delivered to the front door" | **Not handled yet** (open question, §15) |
+
+Raw data rarely contains real sentences. Where it does, two options are open: map the message to a tag (kind 3), or turn the sentence into numbers with the text encoder and pass it as an `embedding`-modality token, which the Home Token already supports.
+
+**Status:** the Home Token format (with `modality`, `confidence` and `vector`) ✅, and the CASAS and UCI converters ✅. The tag field and tag vocabulary are 📐: the scaffold's simulator currently simplifies by giving each detector tag its own entity row ("baby crying in nursery, audio sensor"), which mixes the device with the observation. The design above replaces that (§15).
+
+### 6.5 Device registry (the device table)
+
+The device registry is the per-home table built in §6.4 Phase 1. It has two parts:
+
+| Part | Holds | Storage |
+|---|---|---|
+| **Registry rows** (text) | Device ID, item, room, type, description, text-encoder version, date added, active flag | A normal database table (for example SQLite) on the hub, as part of the ontology (§6.2) |
+| **Device numbers** (vectors) | The text encoder's 384 numbers per row | Stored with the rows (a binary column or a small file), **loaded into memory as one matrix** when the model starts |
+
+| row | device_id | item | room | type | description | encoder | added | active |
+|---|---|---|---|---|---|---|---|---|
+| 0 | M014 | ceiling | kitchen | motion | "ceiling in kitchen, motion sensor" | MiniLM-L6-v2 | 2026-09-01 | ✅ |
+| 1 | fridge_power | fridge | kitchen | power | "fridge in kitchen, power sensor" | MiniLM-L6-v2 | 2026-09-01 | ✅ |
+| 2 | nursery_mic | microphone | nursery | audio detector | "microphone in nursery, audio sensor" | MiniLM-L6-v2 | 2026-09-03 | ✅ |
+
+It is small: 150 devices × 384 numbers × 4 bytes ≈ **230 KB**.
+
+Next to it sits the **tag vocabulary** (§6.4): one row per tag a detector can output ("baby crying", "parcel at door"), with the tag's numbers from the same text encoder. It is shared by every home that uses the same detector models, and is equally small. Activities such as "the baby cried" are **neither** devices nor tags: they are concepts in the ontology (§6.2), decided by HomeFM from many observations and stored as episodes.
+
+#### Where it sits
+
+```mermaid
+flowchart LR
+    subgraph HUB["Home hub (local, private)"]
+        subgraph DB["Local database (e.g. SQLite)"]
+            ONT["Ontology<br/>rooms · people · pets<br/>concepts and rules · capabilities"]
+            REG["Device registry<br/>rows + device numbers"]
+            EVS["Event store"]
+            EPS["Episode / state / anomaly<br/>device-health tables"]
+        end
+        subgraph RT["Model runtime (memory)"]
+            MOD["HomeFM student<br/>(same file in every home)"]
+            MAT["Device-number matrix<br/>(rows × 384)"]
+        end
+        VS[("Vector store<br/>minute and day vectors")]
+        AG["LLM agent"]
+    end
+    REG -- "loaded at start-up" --> MAT
+    MAT --> MOD
+    MOD --> EVS
+    MOD --> EPS
+    MOD --> VS
+    ONT --> AG
+    REG --> AG
+    EVS --> AG
+    EPS --> AG
+    VS --> AG
+```
+
+The registry lives on the hub with the rest of the home's data and never needs to leave the home. **The model reads its numbers; the agent reads its text.**
+
+#### Where it is used
+
+| Use | Who | How |
+|---|---|---|
+| **A. Reading every event** | Model, step 1 (attribute fusion, §7.4) | The token says `entity = row 0`, so the model fetches row 0's numbers as the event's "what" fact. Without the registry, "row 0" would be a meaningless number. For a detector event, the tag's numbers from the tag vocabulary become its "value" fact. |
+| **B. Predicting the next device** | Next-event head (§8.2 Stage 1, surprise in §9.2) | The prediction is compared with **every row of this home's registry** and the closest wins. It can never predict a device the home does not have. |
+| **C. Mapping words to devices** | Agent, capability check, device-health engine | "fridge" in a question → `fridge_power`. "No microphone in the nursery" → "I can't count crying there". Device health follows each row's events over time. |
+
+#### Why it is kept outside the model
+
+| | Model weights | Device registry |
+|---|---|---|
+| Shared across homes? | **Yes**, one model file for every home | **No**, one per home |
+| Made during | Training, on the server | Setup, on the hub |
+| Changes when | A new model release arrives | A device is added, renamed or moved |
+| Contains | What was learned about behaviour | This home's devices, as descriptions and numbers |
+
+This separation is what lets **one trained model work in any home**. A new device only needs a new row, with **no retraining**. It is like a chef (the model) and a pantry list (the registry): the chef's skills are the same in every kitchen, and the list says what this kitchen has.
+
+#### Why not in the vector store
+
+| | Device registry | Vector store |
+|---|---|---|
+| Rows | About 20–200 devices | Hundreds of thousands of minute vectors per year |
+| Access | By row number ("give me row 0") | By similarity ("minutes near 'frying'") |
+| Changes | Rarely | Every minute |
+| Best tool | Plain table + a matrix in memory | A nearest-neighbour database |
+
+#### Lifecycle
+
+| Change | What happens |
+|---|---|
+| New device added | New row: description → text encoder → numbers. Used immediately, no retraining. |
+| Device renamed or moved | Description updated, numbers recomputed |
+| Device removed | Row marked **inactive**, not deleted, because older events still point to it |
+| Text encoder upgraded (with a model release) | All rows recomputed. The encoder column records which version made them. |
+
+#### During training
+
+The server builds one registry per training home from each dataset's sensor layout (the CASAS and UCI converters do this automatically) and combines them into one matrix for the run. Each home's events point only to its own rows, and next-device prediction is restricted to that home's rows (`home_entity_mask`).
+
+#### Status
+
+| Part | Status |
+|---|---|
+| Device numbers as an in-memory matrix (`entity_table` in HomeFM, `text_table` in DomusFM) | ✅ |
+| Building the matrix from dataset sensor layouts (converters) | ✅ |
+| Uses A and B in the model (`EventEmbedder`, `NextEventHead.entity_logits` with `home_entity_mask`) | ✅ |
+| Persistent registry on the hub (SQLite rows, active flag, encoder version) | 📐 |
+| Tag vocabulary and a tag field on Home Tokens (the scaffold simulator still gives each tag its own entity row) | 📐 |
+| **Gap:** HomeFM currently saves `entity_table` inside the model file. For deployment it must be separate, so one model file serves every home and each home loads its own registry. | 📐 (§15) |
+
+### 6.6 Home onboarding: building the device registry
+
+Nobody has to tag every device by hand. Smart-home platforms already store each device's name, room and type, because voice assistants and apps need them. Onboarding imports that information, cleans it up, and asks the user only about gaps.
+
+```mermaid
+flowchart LR
+    HUBD["Hub device list<br/>Home Assistant · Matter · Zigbee"] --> IMP["1. Import<br/>name · area · device class<br/>manufacturer · model"]
+    IMP --> NORM["2. Normalise<br/>mapping rules<br/>+ small LLM for messy names"]
+    NORM --> OK{"Item, room and<br/>type all clear?"}
+    OK -- yes --> REG[("Device registry<br/>§6.5")]
+    OK -- no --> OBS["3. Watch behaviour<br/>for a day or two"]
+    OBS --> SUG["4. Suggest<br/>Plug 3 looks like a fridge"]
+    SUG --> ASK["5. One-tap question<br/>to the user"]
+    ASK --> REG
+    PPL["User adds people and pets<br/>once, about a minute"] --> ONT[("Ontology")]
+    DET["Detectors: the mic or camera is a device row<br/>its fixed tags go to the tag vocabulary"] --> REG
+```
+
+**1. Import.** A Home Assistant device, for example, already carries what the registry needs:
+
+```
+entity_id:     binary_sensor.kitchen_motion
+friendly_name: "Kitchen Motion"
+area:          Kitchen            ← set by the user when installing it
+device_class:  motion             ← set by the device
+manufacturer:  Aqara, model RTCGQ11LM
+```
+
+**2. Normalise** with mapping rules:
+
+| Platform says | Registry field |
+|---|---|
+| `device_class: motion` | type = motion |
+| `device_class: door` | type = contact |
+| `device_class: power`, unit W | type = power |
+| `area: Kitchen` | room = kitchen |
+| Name "**Fridge** Plug" | item = fridge |
+| Name "Kitchen Motion" (no item word) | item = ceiling (default for motion sensors) |
+
+A small LLM handles messy names, for example "Mum's bedside lamp" → item = lamp, room = master bedroom.
+
+**3–4. Guess from behaviour** when the name says nothing ("Plug 3"). This is the appliance-signature skill of the device-health engine (§9.3) used the other way round:
+
+| Behaviour over a day or two | Suggestion |
+|---|---|
+| About 150 W, cycling on and off every ~40 min, all day | Fridge |
+| About 2,000 W for ~3 min, a few times a day | Kettle |
+| About 1,200 W for ~45 min, then stops | Robot vacuum or washing machine |
+
+**5. Ask only when unsure**, with a one-tap question: *"Plug 3 behaves like a fridge. Is that right? [Yes] [No, it's a…]"*
+
+**Who does what**
+
+| Task | Who | Effort |
+|---|---|---|
+| Name devices and assign rooms | The user, already, when setting up the smart home | None extra |
+| Import, normalise, encode | Automatic | None |
+| Identify unclear devices | Automatic suggestion, the user confirms | A few taps |
+| Add people and pets | The user, once | About a minute |
+| New device added later | Automatic import, a question only if unclear | Usually none |
+| Research datasets (training) | Converters, once per dataset | None per home |
+
+**Where human effort remains:** homes with no rooms assigned (the app asks room by room), stale room assignments (detected when a "bedroom" sensor always fires with kitchen sensors, then confirmed), and people and pets, which no sensor can name.
+
+**Status:** automatic parsing of dataset sensor names ✅ (`parse_sensor_name` in the CASAS converter). Hub import, name normalisation, behaviour-based suggestions and the onboarding questions 📐. Which hub ecosystem to target first is an open decision (§15).
 
 ## 7. HomeFM model architecture
 
@@ -1083,6 +1412,173 @@ flowchart TB
 | Teacher | 300M–1B | Server GPU | Pretraining at scale, pseudo-labels |
 | Student | 20–50M (int8) | Edge hub | Streaming inference, per-home adaptation |
 | Scaffold `tiny` | ~1–3M | Laptop / CI | Smoke tests, objective ablations on synthetic data |
+
+### 7.4 Inside one minute: from Home Tokens to the transformer
+
+This section follows one minute, **18:31**, from its Home Tokens to the stream transformer. The same steps run in training and in live use (§5.2). The only difference is that in training all three steps are adjusted together by the practice games, while in live use the weights are fixed.
+
+**No text is produced anywhere on this path, and no LLM is involved.** Every step works on vectors (lists of numbers). The minute summary is a vector, not a sentence.
+
+```mermaid
+flowchart TB
+    subgraph TOK["Home Tokens in minute 18:31"]
+        E1["stove plug · 1,850 W"]
+        E2["kitchen motion · ON"]
+        E3["fridge door · OPEN"]
+    end
+    subgraph S1["Step 1 · attribute fusion (per event)"]
+        F["4 facts per event<br/>what: device registry row<br/>value · when + time since · meta"]
+        FV["one event vector each"]
+        F --> FV
+    end
+    subgraph S2["Step 2 · moment encoder (per minute)"]
+        R["4 learned reporters<br/>each weighs the minute's events"]
+        C["+ event count<br/>+ minute's time of day and weekday<br/>(quiet key if the minute is empty)"]
+        MS["ONE minute summary<br/>(256 numbers)"]
+        R --> MS
+        C --> MS
+    end
+    subgraph S3["Step 3 · stream transformer"]
+        P["+ position in the sequence<br/>(+ hidden-minute marker in training)"]
+        ST["reads 18:31 with earlier minutes<br/>(live) or earlier and later (look-back)"]
+        CV["contextual minute vector<br/>(256 numbers, now in context)"]
+        P --> ST --> CV
+    end
+    TOK --> F
+    FV --> R
+    MS --> P
+    CV --> HEADS["Heads (§9) · projection to the<br/>vector store (§7.5, §10.1)"]
+```
+
+#### Step 1 · Attribute fusion: each event becomes one vector
+
+Each Home Token supplies four facts, and one small attention layer lets them influence each other before they are pooled into one event vector (§7.2, `EventEmbedder`):
+
+| Fact | Where it comes from | Example |
+|---|---|---|
+| **What** | The device registry row the token points to (§6.5), through a learned projection | "stove in kitchen, power sensor" |
+| **Value** | State embedding (ON/OFF) plus a small network on the number, if there is one. For a detector event, the tag's numbers from the tag vocabulary (§6.4), and the detector's own embedding if it sends one. | 1,850 W · or "baby crying" |
+| **When** | Cyclic time of day and weekday, plus the time since the previous event and since this device last fired | 18:31 Tuesday · 3 s · 20 min |
+| **Meta** | Signal type and confidence | power reading · 1.0 |
+
+Fusion matters because the same device means different things in different contexts: kitchen motion at 07:00 and at 23:30 should not look identical.
+
+#### Step 2 · Moment encoder: one summary per minute
+
+All event vectors of the minute are squeezed into **one minute summary**. The moment encoder works like **4 reporters** looking at the same minute. Each has *learned* (not been told) to pay attention to different things, for example movement, appliances, doors, or anything rare.
+
+For 18:31, with three events:
+
+1. Each reporter scores how relevant each event is to it. Reporter 2 might give the stove 0.8, motion 0.1 and the fridge 0.1.
+2. Each reporter writes a weighted mix of the events, mostly the ones it cares about.
+3. The four reports are averaged into one vector.
+4. Two facts are added into it: **how many events** the minute had, and **the minute's time of day and weekday**.
+5. A minute with **no events** still gets a proper summary, from a learned "quiet" key, so "nothing happened" is information too.
+
+Technically this is a Perceiver-style cross-attention with K = 4 learned latent queries, computed for all minutes at once with a segment softmax (`MomentEncoder`).
+
+#### Step 3 · Stream transformer: minutes in context
+
+The stream transformer adds each minute's **position in the sequence** and reads the minute summaries in order. In live mode, 18:31 looks only at earlier minutes. In look-back mode, it also looks at later minutes that have already happened (§5.2). During training game 2, hidden minutes are replaced by a learned "hidden" marker. The output for 18:31 is its **contextual minute vector**: still 256 numbers, but now "18:31 in context" (someone came in at 18:28, the fridge opened at 18:29, it is dinnertime).
+
+#### Everything packed into one minute's vector
+
+| Added at | Information |
+|---|---|
+| Step 1 (per event) | Which device (from its description), value, time of day, weekday, time since the previous event, time since this device last fired, signal type, confidence |
+| Step 2 (per minute) | The reporters' mix of the events, the event count, the minute's time, the "quiet" signal for empty minutes |
+| Step 3 (sequence) | Position in the sequence, the hidden-minute marker (training only), and context from other minutes |
+
+Nothing is passed alongside the vector. The time and position parts are added into the same numbers, not attached as separate fields.
+
+#### Two kinds of minute vector
+
+| | Minute summary | Contextual minute vector |
+|---|---|---|
+| Made by | Moment encoder (step 2) | Stream transformer (step 3) |
+| Knows about | This minute's events only | This minute **plus** other minutes |
+| Used for | Input to the transformer | Heads, episodes, and (after projection) the vector store |
+
+#### Where language models are used, and where they are not
+
+| Model | Used for | When | On the event path? |
+|---|---|---|---|
+| **MiniLM** (small, frozen text encoder) | Turning device descriptions and concept sentences into numbers | Once per device or sentence, then cached | Only through the cached registry rows |
+| **Large LLM** (offline) | Writing simulator routines and training captions (§11) | Preparing training data | No |
+| **Small local LLM** (the agent) | Understanding the question, calling tools, writing the answer (§10) | Question time | No |
+
+#### Why vectors and not sentences
+
+- **Precision:** 1,850 W and "3 seconds apart" survive exactly. A sentence would round them into vague words.
+- **Speed:** mixing numbers is cheap on a home hub. An LLM call for each of 1,440 minutes a day is not.
+- **Learnability:** because steps 1–3 are trained together, the moment encoder learns to pack exactly what the transformer needs. A separate text summariser could not adapt that way.
+
+### 7.5 Making minute vectors comparable with sentences
+
+HomeFM's contextual minute vectors are made from sensor events. Sentence vectors are made by the text encoder from words. **By nature they are different things and cannot be compared.** Position 1 of one means something unrelated to position 1 of the other. They become comparable only through training: this is the alignment of §8.2 Stage 3, the same method CLIP uses to make photos searchable by text.
+
+```mermaid
+flowchart LR
+    subgraph HOME["Home side"]
+        M["Sensor minutes"] --> HFM["HomeFM"] --> MV["Minute vector"] --> PH["Projection head<br/>(learned)"]
+    end
+    subgraph TEXT["Text side"]
+        S["Sentence<br/>someone is cooking"] --> TE["Text encoder<br/>(frozen, never changes)"] --> TV["Sentence vector"] --> PT["Projection head<br/>(learned)"]
+    end
+    PH --> SP["Shared space<br/>(128 numbers each)"]
+    PT --> SP
+    SP --> CMP["Compare:<br/>close = same meaning"]
+```
+
+#### How the training works
+
+1. **Pairs** of sensor minutes and a sentence that describes them, for example (02:00 bedroom quiet, bed pressure ON) ↔ "someone is sleeping", and (18:31 stove 1,850 W, kitchen motion) ↔ "someone is cooking". The sentences come from dataset labels turned into sentences, simulator captions, rule-based captions and checked LLM captions (§11.1).
+2. **Rule:** pull each minute's projected vector **closer** to its own sentence and push it **away** from unrelated sentences. The loss is SigLIP, which scores every pair separately as match or no-match, so one minute can match several true sentences ("cooking", "someone in the kitchen", "dinner prep") and repeated routines are not pushed apart.
+3. The text encoder is **frozen**. The two small projection heads and HomeFM itself adjust, until matching minutes and sentences land close together.
+
+A toy example with 3 numbers instead of 128. The sentence "someone is sleeping" is `[0.0, 0.1, 0.9]`.
+
+| | Projected vector of a 02:00 sleeping minute | Score against "sleeping" |
+|---|---|---|
+| Before training | `[0.4, 0.5, 0.3]`, random-ish | 0.32, meaningless |
+| After training | `[0.05, 0.1, 0.95]` | **0.87**, lands near "sleeping" |
+
+#### What this changes in the heads: a sentence instead of learned weights
+
+A head that recognises activities compares the minute vector with **one reference vector per activity** and picks the closest. The only question is where those reference vectors come from:
+
+| | DomusFM activity head | HomeFM tagger |
+|---|---|---|
+| Reference vector for an activity | A row of weights **learned from labelled examples** | The activity's **sentence**, through the text encoder and projection |
+| Score | `Linear(window vector)[class]` | `σ(a · cos(P(minute vector), P(text(sentence))) + b)` |
+| New activity | Collect labels, retrain | Write a sentence |
+| Labels | Required for an activity to exist | Optional, to improve accuracy |
+| Several activities at once | No, one class per window | Yes, each sentence is scored separately |
+
+Toy example for minute 18:31, projected to `[0.85, 0.15, 0.05]`:
+
+| Sentence | Sentence vector | Score |
+|---|---|---|
+| "someone is cooking food" | `[0.9, 0.1, 0.0]` | **0.78** ← highest |
+| "someone is sleeping" | `[0.0, 0.1, 0.9]` | 0.06 |
+| "someone is vacuuming" | `[0.1, 0.9, 0.1]` | 0.23 |
+
+Adding "someone is watering plants" means encoding one more sentence. The head can score it immediately.
+
+The comparison only works because of the alignment training above. **Bolting a sentence-comparison head onto DomusFM would not work**, because DomusFM's vectors were never trained to land near matching words. So the difference between the two models is in **two places**: how the transformer is trained, and how the head scores.
+
+#### Limits
+
+- Alignment only works for activities **similar to something seen in training pairs**. Caption variety is the main risk (§11, §15).
+- A similarity score is not a probability. Thresholds are calibrated per group of concepts and per home.
+
+#### Status
+
+| Part | Status |
+|---|---|
+| SigLIP alignment with a projection head on each side into a shared 128-number space (`LanguageAlignment`, variant F) | ✅ per **window** (pooled minutes) |
+| Per-**minute** alignment, the tagger head, calibrated thresholds | 📐 |
+| Held-out-concept test (hide some activity names in training, find them from text alone) | 📐 |
 
 ## 8. Pretraining design
 
@@ -1767,6 +2263,10 @@ gantt
 2. Target sensor ecosystem (Home Assistant / Matter / vendor-specific).
 3. v1 priority domains (recommend 2–3 deep, e.g. activity + energy/device health + security).
 4. Access to real pilot-home data.
+5. Free-text messages in raw data (delivery notifications, calendar entries, speaker transcripts): map to tags, or pass as text-embedding tokens (§6.4).
+6. Keep the device registry out of the model file: the scaffold currently saves `entity_table` inside the HomeFM checkpoint, and deployment needs one shared model file plus a per-home registry (§6.5).
+7. Onboarding: which hub to import from first, and how far behaviour-based device suggestions can be trusted without confirmation (§6.6).
+8. Detector tags: add a tag field and tag vocabulary to the Home Token and embedder, and change the simulator, which currently gives each tag ("baby crying") its own entity row and so mixes the device with the observation (§6.4).
 
 ## 16. Repository layout
 
