@@ -21,6 +21,7 @@
 9. [Downstream heads and analytics engines](#9-downstream-heads-and-analytics-engines)
 10. [Query agent](#10-query-agent)
    - [10.1 How the agent reads HomeFM outputs](#101-how-the-agent-reads-homefm-outputs)
+   - [10.2 End-to-end example: counting cooking](#102-end-to-end-example-counting-cooking)
 11. [Data strategy](#11-data-strategy)
 12. [Evaluation plan](#12-evaluation-plan)
 13. [Deployment, privacy and edge](#13-deployment-privacy-and-edge)
@@ -1003,6 +1004,148 @@ Because minute vectors are kept, **adding a concept later is cheap and retroacti
 - Similarity thresholds for the open path are calibrated per concept family on held-out data, and tuned per home from user feedback.
 - Minute vectors are tied to a model version. A HomeFM upgrade re-embeds the retained history (or keeps the old index until it expires) so old and new vectors are never mixed.
 - Scaffold status: alignment training exists (the `language` objective in variant F). The tagger → episodes pipeline, the vector index and the `semantic_search` tool are not built yet (§16).
+
+### 10.2 End-to-end example: counting cooking
+
+This traces one question from sensor to answer: **"How many times did cooking happen in the last 4 hours?"**, asked at 20:00.
+
+**Home:** kitchen stove smart plug, kitchen motion sensor, fridge door contact, microwave plug, and an optional kitchen microphone whose audio stays on the hub.
+
+**What happened between 16:00 and 20:00:** the microwave ran for 1 minute at 16:20. Someone made tea from 17:05 to 17:25. Dinner was cooked from 18:30 to 19:25, with the stove switched off for 6 minutes in the middle.
+
+The flow has three phases. **A** happens once, **B** runs all the time, and **C** runs only when someone asks.
+
+```mermaid
+sequenceDiagram
+    participant D as Sensors and experts
+    participant I as Ingestion
+    participant E as Event store
+    participant F as HomeFM
+    participant H as Heads and episode builder
+    participant S as Episode store
+    actor U as User
+    participant A as LLM agent
+    participant O as Ontology and time resolver
+    Note over D,S: Phase B, continuous, before anyone asks
+    D->>I: 18:31:02 plug_07 power=1850
+    I->>E: Home Token (stove in kitchen, 1850 W)
+    I->>F: token vector
+    F->>F: minute vector, then minute-in-context vector
+    F->>H: p(cooking)=0.93 at 18:31
+    H->>S: episode cooking 18:30 to 19:22, conf 0.94
+    Note over U,S: Phase C, at 20:00
+    U->>A: How many times did cooking happen in the last 4 hours?
+    A->>O: resolve cooking and last 4 hours
+    O-->>A: concept=cooking (stored), range 16:00 to 20:00
+    A->>S: query_episodes(cooking, 16:00, 20:00)
+    S-->>A: 17:05 to 17:25 (0.78), 18:30 to 19:22 (0.94)
+    A-->>U: 2 times, with times and evidence
+```
+
+#### Phase A: setup (once)
+
+**A1. Pretrain HomeFM** (§8). This is offline, on the public corpus. The home itself is never used. The model learns general patterns such as "stove power, kitchen motion and evening usually go together". Nobody labels "cooking" at this stage.
+
+**A2. Register the home's devices** (§6.1). Each device is described by text, not by an ID:
+
+| entity_id | Text the model sees |
+|---|---|
+| `plug_07` | "stove in kitchen, power sensor" |
+| `pir_03` | "ceiling in kitchen, motion sensor" |
+| `door_12` | "fridge in kitchen, contact sensor" |
+
+Because the model reads "stove in kitchen", it works in a new home without retraining.
+
+**A3. Define the concept in the ontology** (§6.2, §9.1):
+
+| Field | Value for `cooking` |
+|---|---|
+| Description text | "someone is cooking food in the kitchen" |
+| Merge gap `g` | 10 min: two bursts less than 10 min apart are one session |
+| `min_duration` | 3 min: anything shorter is not cooking |
+| Observable here? | Yes: stove plug and kitchen motion, plus audio if present |
+
+#### Phase B: live processing (continuous)
+
+Follow one moment, **18:31**, during dinner.
+
+**B1. A sensor fires.** The Zigbee hub sends `18:31:02  0x00158d0001a2  {"power": 1850}`.
+
+**B2. Normalise to a Home Token** (§6.1): `ts=18:31:02, entity=plug_07, modality=scalar, value=1850 W, confidence=1.0, source=sensor`. If a microphone is present, the audio expert adds its own token, such as `audio_tag="sizzling", confidence=0.82, source=expert`. The raw audio is discarded.
+
+**B3. Store the raw event** in the event table. This keeps the evidence and answers exact questions ("when was the fridge opened?") without the model.
+
+**B4. Token to vector** (§7.2). The token becomes one vector made of four parts:
+
+- **what:** the device text, through the frozen text encoder (cached)
+- **value:** 1850 W, scaled
+- **when:** Tuesday at 18:31, as cyclic features
+- **meta:** modality, source and confidence
+
+**B5. Minute summary** (moment encoder). At 18:32, every token from 18:31 is combined into one moment vector: 5 stove readings, 2 motion events, 1 fridge open, 1 "sizzling". A busy minute stays one vector, and a quiet minute becomes a "nothing happened" vector.
+
+**B6. Add context** (causal stream transformer). The 18:31 moment is read with the moments before it: someone entered the kitchen at 18:28, the fridge opened at 18:29, the stove came on at 18:30, it is dinnertime, and this home usually cooks now. The output is a contextual moment vector meaning "18:31 in context".
+
+**B7. Heads read the vector** (§9). This is where vectors become facts:
+
+| Head | Output for 18:31 |
+|---|---|
+| Tagger | Similarity to the text "someone is cooking food…" gives **p(cooking) = 0.93**. Also p(eating) = 0.10 and p(cleaning) = 0.05 |
+| Boundary | High probability that cooking started at 18:30 |
+| Occupancy | Kitchen: 1 person |
+| Surprise | Low: a normal routine, so no anomaly |
+| Embedding index | The vector is also written to the vector index, for open questions (§10.1, Bridge 2) |
+
+**B8. Episode builder: minutes become "times"** (§9.1). It applies smoothing with hysteresis (on above 0.6, off below 0.4), then the concept's merge and drop rules:
+
+| Time | p(cooking) | Result |
+|---|---|---|
+| 16:20 | 0.71 | On for 1 min, shorter than 3 min: **dropped** |
+| 17:05–17:25 | 0.65–0.85 | On for 20 min: **episode 1** |
+| 18:30–18:52 | 0.80–0.95 | On |
+| 18:53–18:58 | 0.20 (stove off, stirring) | Off for 6 min, shorter than the 10 min gap: **merged** |
+| 18:59–19:25 | 0.85–0.93 | On: **episode 2, 18:30–19:25** |
+
+**B9. Refine later** (bidirectional pass). About once an hour, a pass reads the recent hours in both directions. It now knows how dinner ended, so it can correct boundaries. Here the end moves from 19:25 to 19:22, because the last 3 minutes were cleaning up.
+
+**B10. Write the episode table:**
+
+```
+ep_881  cooking  17:05  17:25  kitchen  conf=0.78  evidence=[plug_07, pir_03, mic]
+ep_884  cooking  18:30  19:22  kitchen  conf=0.94  evidence=[plug_07, pir_03, door_12, mic]
+```
+
+All of Phase B is done before anyone asks.
+
+#### Phase C: the question (20:00)
+
+**C1.** The user asks: *"How many times did cooking happen in the last 4 hours?"*
+
+**C2. Resolve the words.** `resolve("cooking")` returns `concept=cooking, stored=yes, observable=yes`. If the home had no stove plug and no kitchen sensors, the capability registry would say so, and the agent would say it cannot tell rather than guess.
+
+**C3. Resolve the time in code.** `resolve("last 4 hours", tz=home)` returns `[16:00, 20:00)`.
+
+**C4. Query the facts.** `query_episodes(concept="cooking", start=16:00, end=20:00)` returns two episodes: 17:05–17:25 (confidence 0.78) and 18:30–19:22 (confidence 0.94). This is a plain database lookup that takes milliseconds. The model does not run at question time.
+
+**C5. The LLM writes the answer**, using only the tool's numbers:
+
+> **2 times** in the last 4 hours: 17:05–17:25 (20 min) and 18:30–19:22 (52 min). A 1-minute microwave use at 16:20 was not counted as cooking.
+
+**C6. Feedback (optional).** The user replies: *"The 17:05 one was just making tea."* This is stored as a label for this home. The quick fix is to raise `min_duration` or add a `tea` concept, so short kettle-only sessions stop counting. Later, the label is one of the few per-home examples used for Stage 4 adaptation (§8.2).
+
+#### The same question for a concept that is not stored
+
+For *"How many times did we fry something today?"*, there is no `frying` concept and no stored episodes, so the agent uses Bridge 2 (§10.1):
+
+1. `semantic_search("frying food in a pan", today)` turns the text into a vector in the same space as the moment vectors.
+2. The index returns the closest minutes, for example 18:35–18:50 at similarity 0.71.
+3. The agent answers more cautiously: *"Probably once, around 18:35–18:50 (medium confidence). I don't track frying directly."*
+
+#### What the example shows
+
+- **The model works before the question.** At question time only a lookup runs, so answers are fast, repeatable and backed by evidence.
+- **Counting accuracy comes from two places:** the tagger's probabilities (the model) and the merge and drop rules (the ontology). The rules are simple, per concept and tunable per home.
+- **The LLM never counts or does arithmetic.** Tools produce every number, and the LLM only puts it into words.
 
 ## 11. Data strategy
 
