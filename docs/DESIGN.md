@@ -109,12 +109,13 @@ Domains are open-ended; question **types** are a small, closed set. Every type m
 
 - Each event `(timestamp, sensor, ON/OFF)` is described by textual attributes (house item, room, sensor type) embedded with Sentence-BERT (MiniLM), plus a status embedding and cyclic time encoding, fused by attribute self-attention.
 - A 12-layer transformer contextualises events over a sliding window of 30 events.
-- Pretraining: two-stage contrastive (InfoNCE) — attribute masking, then whole-event masking with the event encoder frozen.
+- Pretraining: two-stage contrastive (InfoNCE) — attribute masking, then whole-event masking with the event encoder frozen. **Pretraining uses no labels.**
+- Downstream tasks: a small head is fine-tuned on 5–30 % of the target dataset's activity labels. The authors do not annotate any data; the labels are the human-made activity logs that ship with the public datasets (CASAS, UCI, …).
 - Leave-one-dataset-out on 7 public datasets: beats DeepCASAS, Chronos and a GPT-2 baseline on ADL recognition, next-k event prediction and clustering with 5–30 % labels; runs at ~10 ms per window on a Celeron mini-PC.
 
 | Requirement | DomusFM | Gap |
 |---|---|---|
-| R1 Open vocabulary | Fixed label set, needs ~5 % labels per home | ❌ |
+| R1 Open vocabulary | Can only name activities that already have labelled examples (5–30 % of the target dataset's labels used for fine-tuning) | ❌ |
 | R2 Multi-modal | Binary events only; continuous data must be binarised | ❌ |
 | R3 Multi-scale time | Fixed 30-event window | ❌ |
 | R4 Multi-occupant | Single resident assumed | ❌ |
@@ -171,9 +172,10 @@ flowchart LR
 
 #### L1 · Closed label set, no zero-shot (R1)
 
-- **In the paper:** §7.4.3 states DomusFM "does not yet operate in a zero-shot fashion". Every result fine-tunes a linear head on 5–30 % of the target dataset's labels.
-- **Scenario:** *"How many times did someone vacuum today?"* None of the pretraining datasets has a "vacuuming" label, and this home has never labelled it.
-- **What goes wrong:** there is no output for "vacuuming". It has to be added as a class and labelled in this home first. 5 % of a CASAS dataset is still days of annotated activity, which a household will not provide for every new question.
+- **In the paper:** §7.4.3 states DomusFM "does not yet operate in a zero-shot fashion". Every activity-recognition result fine-tunes a linear head on 5–30 % of the target dataset's labels (§6.1.3, §6.4.3).
+- **Where the labels come from:** the paper does no labelling of its own, and pretraining is label-free. The labels used for fine-tuning are the human-made activity annotations that ship with the public datasets. So DomusFM *learns* without labels, but it can only *name* an activity that already has labelled examples.
+- **Scenario:** *"How many times did someone vacuum today?"* None of the public datasets has a "vacuuming" annotation, and this home has never labelled it.
+- **What goes wrong:** there is no output for "vacuuming". Pretraining may group vacuuming-like moments together (the paper's clustering task needs no labels), but the group has no name and cannot be queried by the word "vacuuming". To add it as a class, someone must first provide labelled examples. 5 % of a CASAS dataset is still days of annotated activity, which a household will not provide for every new question.
 - **Same failure:** "guest visit", "kids doing homework", "Dad took medicine", any concept the user invents.
 - **HomeFM:** moment and episode embeddings are aligned with text (SigLIP), so a new concept is scored against its text embedding with no labels. Labels are used to improve accuracy, not to make a concept exist.
 
