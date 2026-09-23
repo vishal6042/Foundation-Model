@@ -1,0 +1,118 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|##########| 103/103 [00:00<00:00, 4478.12it/s]
+F:\Foundation_Model\src\homefm\data\text_encoder.py:64: FutureWarning: The `get_sentence_embedding_dimension` method has been renamed to `get_embedding_dimension`.
+  self.dim = self._model.get_sentence_embedding_dimension()
+[domusfm] device=cuda params=28,596,480 datasets=uci_b(4668 ev, 11 cls), hh101(222858 ev, 35 cls), hh103(112474 ev, 33 cls), hh105(147074 ev, 34 cls), hh110(98686 ev, 32 cls), hh119(92740 ev, 33 cls), hh122(129936 ev, 34 cls), hh102(281505 ev, 36 cls), hh104(344700 ev, 36 cls), hh106(202546 ev, 37 cls), hh107(203300 ev, 28 cls), hh108(285795 ev, 34 cls), hh109(399200 ev, 35 cls), hh111(221284 ev, 35 cls), hh112(468586 ev, 34 cls), hh113(2282244 ev, 35 cls), hh114(135195 ev, 35 cls), hh115(1601811 ev, 36 cls), hh116(388627 ev, 35 cls), hh117(771229 ev, 33 cls), hh118(179599 ev, 31 cls), hh120(219381 ev, 35 cls), hh121(122648 ev, 38 cls), hh123(106836 ev, 33 cls), hh124(13374 ev, 24 cls), hh125(216228 ev, 35 cls), hh126(111801 ev, 33 cls), hh127(50843 ev, 30 cls), hh128(402570 ev, 32 cls), hh129(160678 ev, 33 cls), hh130(121598 ev, 28 cls), ihs06(305693 ev, 29 cls), ihs07(443436 ev, 30 cls), ihs08(448662 ev, 33 cls), ihs09(753603 ev, 34 cls), ihs11(435820 ev, 28 cls), mn50(99928 ev, 33 cls), mn51(175521 ev, 28 cls), mn57(256360 ev, 26 cls), mn61(170468 ev, 32 cls), mn71(132698 ev, 31 cls), mn77(231641 ev, 30 cls), mn82(62859 ev, 26 cls), mn83(383651 ev, 35 cls), mv001(3368850 ev, 1 cls), mva001(195155 ev, 27 cls), mva002(292995 ev, 27 cls), mva003(419378 ev, 26 cls), mva004(138763 ev, 26 cls), rw101(72624 ev, 32 cls), rw103(116886 ev, 31 cls), rw104(178390 ev, 38 cls), rw105(97503 ev, 34 cls), rw106(113834 ev, 30 cls), rw107(88686 ev, 34 cls), rw110(134244 ev, 35 cls), tm001(248180 ev, 33 cls), tm002(806980 ev, 26 cls), tm003(209095 ev, 28 cls), tm004(796745 ev, 36 cls), tm005(272834 ev, 34 cls), tm006(222154 ev, 36 cls), tm007(84429 ev, 33 cls), tm008(156884 ev, 31 cls), tm009(207550 ev, 16 cls), tm010(391352 ev, 24 cls), tm011(571037 ev, 34 cls), tm013(295910 ev, 17 cls), tm014(163224 ev, 31 cls), tm015(160436 ev, 18 cls), tm016(71452 ev, 26 cls), tm017(90637 ev, 32 cls), tm018(140755 ev, 23 cls), tm019(106632 ev, 29 cls), tm020(162747 ev, 32 cls), tm021(187859 ev, 25 cls), tm022(303018 ev, 33 cls), tm026(265427 ev, 31 cls), tm029(168025 ev, 29 cls), tm035(170173 ev, 31 cls), tm037(143711 ev, 30 cls), tm038(424816 ev, 27 cls), milan(421392 ev, 1 cls), aruba(1602821 ev, 1 cls)
+[domusfm] pretraining on 77 datasets, 27,255,501 events, 27,253,268 windows
+  pretrain[attribute] step     0 loss 2.3450 (1s)
+  pretrain[attribute] step  1000 loss 0.0012 (92s)
+  pretrain[attribute] step  2000 loss 0.0008 (182s)
+  pretrain[attribute] step  3000 loss 0.0014 (266s)
+  pretrain[attribute] step  4000 loss 0.0005 (351s)
+  pretrain[attribute] step  5000 loss 0.0005 (436s)
+  pretrain[attribute] step  6000 loss 0.0006 (522s)
+  pretrain[attribute] step  7000 loss 0.0008 (608s)
+  pretrain[attribute] step  8000 loss 0.0015 (693s)
+  pretrain[attribute] step  9000 loss 0.0006 (777s)
+  pretrain[attribute] step 10000 loss 0.0008 (862s)
+  pretrain[attribute] step 11000 loss 0.0003 (945s)
+  pretrain[attribute] step 12000 loss 0.0005 (1029s)
+  pretrain[attribute] step 13000 loss 0.0005 (1114s)
+  pretrain[attribute] step 14000 loss 0.0007 (1197s)
+  pretrain[attribute] step 15000 loss 0.0007 (1287s)
+  pretrain[attribute] step 16000 loss 0.0003 (1376s)
+  pretrain[attribute] step 17000 loss 0.0005 (1462s)
+  pretrain[attribute] step 18000 loss 0.0005 (1548s)
+  pretrain[attribute] step 19000 loss 0.0074 (1630s)
+  pretrain[event] step     0 loss 0.0257 (0s)
+  pretrain[event] step  1000 loss 0.0007 (67s)
+  pretrain[event] step  2000 loss 0.0011 (133s)
+  pretrain[event] step  3000 loss 0.0006 (200s)
+  pretrain[event] step  4000 loss 0.0010 (269s)
+  pretrain[event] step  5000 loss 0.0006 (337s)
+  pretrain[event] step  6000 loss 0.0013 (403s)
+  pretrain[event] step  7000 loss 0.0011 (470s)
+  pretrain[event] step  8000 loss 0.0006 (538s)
+  pretrain[event] step  9000 loss 0.0010 (605s)
+  pretrain[event] step 10000 loss 0.0006 (673s)
+  pretrain[event] step 11000 loss 0.0010 (739s)
+  pretrain[event] step 12000 loss 0.0006 (807s)
+  pretrain[event] step 13000 loss 0.0007 (873s)
+  pretrain[event] step 14000 loss 0.0008 (941s)
+  pretrain[event] step 15000 loss 0.0005 (1008s)
+  pretrain[event] step 16000 loss 0.0010 (1077s)
+  pretrain[event] step 17000 loss 0.0007 (1143s)
+  pretrain[event] step 18000 loss 0.0007 (1209s)
+  pretrain[event] step 19000 loss 0.0005 (1276s)
+
+=== held-out: uci_b ===
+  adl      5% DomusFM       0.252 ± 0.032
+  adl      5% w/o Pretrain  0.215 ± 0.055
+  adl     30% DomusFM       0.282 ± 0.028
+  adl     30% w/o Pretrain  0.264 ± 0.054
+  next30   5% DomusFM       0.695 ± 0.014
+  next30   5% w/o Pretrain  0.705 ± 0.012
+  next30  30% DomusFM       0.702 ± 0.007
+  next30  30% w/o Pretrain  0.712 ± 0.003
+
+=== held-out: hh101 ===
+  adl      5% DomusFM       0.492 ± 0.017
+  adl      5% w/o Pretrain  0.558 ± 0.012
+  adl     30% DomusFM       0.491 ± 0.008
+  adl     30% w/o Pretrain  0.553 ± 0.019
+  next30   5% DomusFM       0.635 ± 0.026
+  next30   5% w/o Pretrain  0.645 ± 0.020
+  next30  30% DomusFM       0.628 ± 0.014
+  next30  30% w/o Pretrain  0.631 ± 0.017
+
+=== held-out: hh103 ===
+  adl      5% DomusFM       0.544 ± 0.016
+  adl      5% w/o Pretrain  0.683 ± 0.013
+  adl     30% DomusFM       0.589 ± 0.013
+  adl     30% w/o Pretrain  0.726 ± 0.005
+  next30   5% DomusFM       0.608 ± 0.001
+  next30   5% w/o Pretrain  0.611 ± 0.013
+  next30  30% DomusFM       0.619 ± 0.013
+  next30  30% w/o Pretrain  0.612 ± 0.003
+
+=== held-out: hh105 ===
+  adl      5% DomusFM       0.359 ± 0.036
+  adl      5% w/o Pretrain  0.412 ± 0.036
+  adl     30% DomusFM       0.365 ± 0.028
+  adl     30% w/o Pretrain  0.439 ± 0.028
+  next30   5% DomusFM       0.497 ± 0.002
+  next30   5% w/o Pretrain  0.521 ± 0.011
+  next30  30% DomusFM       0.507 ± 0.013
+  next30  30% w/o Pretrain  0.510 ± 0.005
+
+=== held-out: hh110 ===
+  adl      5% DomusFM       0.324 ± 0.035
+  adl      5% w/o Pretrain  0.330 ± 0.027
+  adl     30% DomusFM       0.326 ± 0.028
+  adl     30% w/o Pretrain  0.378 ± 0.029
+  next30   5% DomusFM       0.564 ± 0.012
+  next30   5% w/o Pretrain  0.586 ± 0.001
+  next30  30% DomusFM       0.572 ± 0.011
+  next30  30% w/o Pretrain  0.555 ± 0.014
+
+=== held-out: hh119 ===
+  adl      5% DomusFM       0.346 ± 0.053
+  adl      5% w/o Pretrain  0.412 ± 0.059
+  adl     30% DomusFM       0.361 ± 0.055
+  adl     30% w/o Pretrain  0.450 ± 0.051
+  next30   5% DomusFM       0.499 ± 0.015
+  next30   5% w/o Pretrain  0.491 ± 0.030
+  next30  30% DomusFM       0.509 ± 0.007
+  next30  30% w/o Pretrain  0.502 ± 0.002
+
+=== held-out: hh122 ===
+  adl      5% DomusFM       0.378 ± 0.006
+  adl      5% w/o Pretrain  0.435 ± 0.019
+  adl     30% DomusFM       0.387 ± 0.010
+  adl     30% w/o Pretrain  0.467 ± 0.003
+  next30   5% DomusFM       0.609 ± 0.014
+  next30   5% w/o Pretrain  0.610 ± 0.005
+  next30  30% DomusFM       0.603 ± 0.007
+  next30  30% w/o Pretrain  0.606 ± 0.002
+
+[domusfm] saved F:\Foundation_Model\runs\domusfm_corpus\results.json and results.md
