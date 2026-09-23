@@ -28,6 +28,7 @@
    - [8.4 Proposed refinements (variant G)](#84-proposed-refinements-variant-g)
    - [8.5 Setup and training, step by step](#85-setup-and-training-step-by-step)
    - [8.6 DomusFM masking vs HomeFM games, on one window](#86-domusfm-masking-vs-homefm-games-on-one-window)
+   - [8.7 Why games 1 and 2 (the rationale for variant E)](#87-why-games-1-and-2-the-rationale-for-variant-e)
 9. [Downstream heads and analytics engines](#9-downstream-heads-and-analytics-engines)
 10. [Query agent](#10-query-agent)
    - [10.1 How the agent reads HomeFM outputs](#101-how-the-agent-reads-homefm-outputs)
@@ -2105,6 +2106,111 @@ The 77-home DomusFM run (2026-09-24), activity recognition with 5 % of labels on
 | hh119 | 0.35 | **0.41** |
 
 DomusFM's game is solved almost immediately and gives no gain, and mostly a loss (full results in [DOMUSFM_REPRODUCTION.md](DOMUSFM_REPRODUCTION.md)). The HomeFM games are **reasons to expect** better results, not proof. Variant E (games 1 + 2) is implemented and tested on small data, and the 77-home comparison is the next run. It succeeds if the HomeFM loss falls gradually rather than collapsing, and pretrained HomeFM beats HomeFM without pretraining on the held-out homes, especially with 5 % of labels.
+
+### 8.7 Why games 1 and 2 (the rationale for variant E)
+
+The pretraining games were chosen by starting from **what the home system has to do**, not from what worked in other fields. Each game trains specific skills, and the two cover each other's weak spots.
+
+#### Start from the jobs, and from the two modes
+
+| Job | Example question |
+|---|---|
+| Understand **now**, in real time, using only the past | "Is anyone cooking right now?" |
+| Know **what comes next and when** | "Will Dad be up soon?" |
+| Notice **unusual** things | "Anything strange last night?" |
+| Understand **whole periods**, and where activities start and end | "How many times did we cook today?" |
+| Cope with **missing or broken** sensors | A motion sensor's battery dies |
+| Work in **any home**, with few or no labels | A new customer's home |
+
+The system also runs the same model in **two modes** (§5.2): **live** reads only the past, and **look-back** re-reads recent hours in both directions. A game is needed for each mode. That is the core reason for two games.
+
+```mermaid
+flowchart LR
+    subgraph JOBS["What the system must do"]
+        J1["Understand now,<br/>past only"]
+        J2["Forecast what<br/>and when"]
+        J3["Surprise and<br/>anomalies"]
+        J4["Whole periods,<br/>starts and ends"]
+        J5["Missing or<br/>broken sensors"]
+        J6["Any home,<br/>no labels"]
+    end
+    subgraph GAMES["Pretraining games"]
+        G1["Game 1<br/>predict the next event<br/>device · value · time until"]
+        G2["Game 2<br/>hide a big chunk,<br/>predict its meaning"]
+    end
+    subgraph MODES["Modes (§5.2)"]
+        LIVE["Live mode<br/>(causal)"]
+        LB["Look-back mode<br/>(bidirectional)"]
+    end
+    J1 --> G1
+    J2 --> G1
+    J3 --> G1
+    J4 --> G2
+    J5 --> G2
+    J6 --> G1
+    J6 --> G2
+    G1 --> LIVE
+    G2 --> LB
+```
+
+#### Why game 1: predict the next event
+
+- **It trains exactly what live mode needs.** Live mode understands the present from the past only, and game 1 is "given the past, what happens next?"
+- **It gives forecasting and surprise directly.** Predicting how long until the next event trains "when" forecasts (L7). How wrong a guess was is the surprise score used by the anomaly engine (L6). No other game provides these.
+- **It cannot be cheated.** The future is genuinely unseen: there is no copy to compare against and no timestamp fingerprint.
+- **It gives a dense signal.** Every event is a question, so a 30-minute window yields dozens of guesses.
+- **It is proven elsewhere.** Next-item prediction is how GPT-style language models learn, and next-event-with-timing is an established method for event data (temporal point processes).
+
+Its weak spots: it only looks backwards, it is short-sighted (much of it is predicting the next few seconds, such as "motion OFF after motion ON"), and it learns events rather than whole periods.
+
+#### Why game 2: hide a big chunk and predict its meaning
+
+- **It trains exactly what look-back mode needs.** Filling a gap from both sides ("fridge before, dining light after, so the gap was cooking") is the look-back skill.
+- **It fixes game 1's short-sightedness.** Hiding 5–10 minutes, a whole room or a whole signal type forces reasoning over longer stretches and across rooms.
+- **It makes every minute's vector meaningful.** Each hidden minute must be described, which is what the tagger and start/end detection need later (L5).
+- **It trains robustness.** Hiding a whole device or room is what happens when a sensor breaks, so the model learns to fill in from the rest of the home.
+- **It predicts meaning, not exact events.** Many details are unpredictable noise, such as the exact second a motion sensor fires or whether the cupboard or the fridge came first. Reproducing raw events wastes effort on that noise. Predicting the vector that a model seeing everything would produce focuses on what matters. This is the idea behind Meta's JEPA models for images and video.
+- **It hides big, structured chunks, not random bits.** Small random holes are filled by copying neighbours (a hidden motion ON next to its motion OFF), which is exactly DomusFM's shortcut. Big chunks remove the neighbours too.
+
+Its weak spot: on its own it trains neither live use, forecasting nor surprise. That is what game 1 is for.
+
+#### Why both together
+
+| | Game 1 | Game 2 | Together |
+|---|---|---|---|
+| Reading direction | Past only (live) | Both sides (look-back) | Both modes the system uses |
+| Time scale | Seconds to minutes | 5–10 minutes, rooms, signal types | Short and long |
+| Level | Single events | Whole minutes | Both |
+| Forecasting and surprise | ✅ | ❌ | ✅ |
+| Meaningful minute vectors | Partly | ✅ | ✅ |
+| Robust to missing sensors | ❌ | ✅ | ✅ |
+| Needs labels | No | No | No, so all 77 training homes can be used |
+
+**Game 1 teaches "what happens next". Game 2 teaches "what was going on". A home system needs both.**
+
+#### Alternatives considered
+
+| Option | Why it is not the base |
+|---|---|
+| **A**, DomusFM's contrastive game ("recognise your own window") | Never asks what was hidden. Solved through timestamps and ON/OFF pairs. Pushes similar routines apart. The 77-home run showed no gain, and mostly a loss (§8.6). |
+| **B**, fill in exact hidden events (BERT-style) | Spends effort on unpredictable noise. With small holes it is still cheatable through ON/OFF pairs. |
+| **Game 3 alone** (match with sentences) | Needs sentences, which are scarce (about 35 activity names in CASAS). Useful as an addition on top (variant F), not as the foundation. |
+| **D**, game 1 alone | Short-sighted and past only |
+| **C**, game 2 alone | No forecasting, no surprise, no live-mode training |
+| **E**, games 1 + 2 | Covers both modes and both time scales, and needs no labels. **Chosen base.** |
+
+#### A choice to be tested, not assumed
+
+The comparison of variants A–F (§8.3) keeps the model, data and compute fixed and changes only the games. An early, **weak** hint comes from a tiny synthetic smoke test (simulated homes, 10–25 seconds of training), far too small to rely on:
+
+| Variant | Activity F1 (probe) | Exact counts correct |
+|---|---|---|
+| A (DomusFM-style) | 0.82 | 40 % |
+| C (game 2 alone) | 0.81 | 40 % |
+| D (game 1 alone) | 0.84 | 48 % |
+| **E (games 1 + 2)** | **0.85** | **49 %** |
+
+In that test game 1 did most of the work, game 2 alone did not help, and the two together were best by a small margin. The real test is variant E against DomusFM on the 77 training homes and 7 held-out homes (`scripts/run_homefm_corpus.sh`). E is kept as the base only if its loss falls gradually rather than collapsing, and pretrained E beats E without pretraining on the held-out homes, especially with 5 % of labels.
 
 ## 9. Downstream heads and analytics engines
 
