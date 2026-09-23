@@ -17,6 +17,7 @@
    - [7.0 In plain words](#70-in-plain-words)
 8. [Pretraining design](#8-pretraining-design)
    - [8.0 In plain words](#80-in-plain-words)
+   - [8.4 Proposed refinements (variant G)](#84-proposed-refinements-variant-g)
 9. [Downstream heads and analytics engines](#9-downstream-heads-and-analytics-engines)
 10. [Query agent](#10-query-agent)
    - [10.1 How the agent reads HomeFM outputs](#101-how-the-agent-reads-homefm-outputs)
@@ -688,6 +689,7 @@ Rather than assume Stage 1 + 2 is better, we test it. Model, data and compute st
 | D | Next event | Stage 1 only |
 | E | D + C | **Proposed** |
 | F | E + language + home-invariance | Full version; adds "search with any words" |
+| G | F + harder, safer games (§8.4) | Proposed refinement: hide on/off pairs together, raise difficulty automatically, predict the next 1/10/60 minutes, treat routine repeats as matches, guard against collapse |
 
 They are scored on activity recognition, exact counts, detecting injected faults, forecasting, finding never-labelled concepts from text, and learning from only 1–5 % of labels.
 
@@ -776,7 +778,45 @@ Same backbone, data and compute budget; only the objective changes.
 
 Evaluated on (§12): activity F1 (linear probe and fine-tune), episode-count exact match, anomaly AUROC on injected faults, forecast NLL, open-vocab retrieval on held-out concepts, 1 %/5 % few-shot adaptation.
 
-**Hypothesis (to be tested, not assumed):** E beats A–D on anomaly, forecasting and counting and matches A on activity recognition; F adds zero-shot capability.
+| G | F + the refinements in §8.4 | not implemented yet |
+
+**Hypothesis (to be tested, not assumed):** E beats A–D on anomaly, forecasting and counting and matches A on activity recognition; F adds zero-shot capability; G trains more stably than E/F and keeps a non-trivial loss on real data.
+
+### 8.4 Proposed refinements (variant G)
+
+The four-stage recipe (§8.2) addresses the problems in §8.1. Our real-data reproduction shows one failure most clearly: **the game becomes too easy**. DomusFM's contrastive loss fell to about 0.001 almost immediately, and pretraining gave no benefit ([DOMUSFM_REPRODUCTION.md](DOMUSFM_REPRODUCTION.md)). The five refinements below target that failure directly. They are proposals, not yet implemented, and are tested as variant G against A, E and F.
+
+| # | Refinement | In simple words | Fixes (§8.1) |
+|---|---|---|---|
+| G1 | Pair-aware masking | If "motion ON" is hidden, also hide its matching OFF, and the other way round | #1 easy guesses |
+| G2 | Adaptive mask difficulty | If the loss collapses, hide bigger chunks automatically (1 → 5 → 15 min; one device → whole room) | #1, and the collapse seen in the reproduction |
+| G3 | Multi-horizon latent forecasting | Predict the *summary* of the next 1, 10 and 60 minutes, from the past only | #4, #5; links Stage 1 and Stage 2 |
+| G4 | Routine-aware positives | Treat the same home at the same time of day on different days as "probably similar", not "different" | #3 false negatives |
+| G5 | Collapse guard | A small penalty that keeps summaries varied, so the model cannot cheat by making them all the same | Stability of Stage 2 (JEPA) |
+
+**G1 · Pair-aware masking.** Many sensors emit paired events: a PIR ON is followed by an OFF seconds later, and a door OPEN by a CLOSE. Hiding only one half of a pair lets the model recover it from the other half without learning anything about behaviour. G1 extends every mask family in §8.2 so that when one half of a pair is hidden, its partner inside the window is hidden too. Pairs are found from the entity's state type in the ontology; no labels are needed. Cost: negligible.
+
+**G2 · Adaptive mask difficulty (curriculum).** A fixed masking rate is either too easy for some homes or too hard for others. G2 tracks the Stage 2 loss during training. If the loss drops below a threshold for a set number of steps, the sampler moves to a harder level: longer time blocks, more entities per span, then whole rooms and whole modalities. If the loss stops falling, it steps back. This keeps the game challenging throughout training, like a video game that raises its level as the player improves. The current level is logged, so an early collapse is visible instead of silent.
+
+**G3 · Multi-horizon latent forecasting (causal JEPA).** Stage 1 predicts the very next event, which is local ("kitchen motion in 10 s"). Stage 2 fills in hidden chunks using both past and future. G3 adds a middle game: from the causal stream state at minute *t*, predict the EMA target summaries of the windows *t+1*, *t+10* and *t+60* minutes ahead. Loss: `L_future = Σ_h SmoothL1(norm(pred_h), norm(target_h))` for h ∈ {1, 10, 60}. This teaches routines ("dinner is coming") in the live, past-only setting that deployment uses, and directly supports questions like "Will Dad be up soon?" and "Is breakfast late?".
+
+**G4 · Routine-aware positives.** In-batch contrastive learning treats every other window as a negative, so two normal nights of sleep are pushed apart (§8.1 #3). G4 marks windows from the same home at the same time of day on different days (within ±30 min) as soft positives, with a lower weight than true positives. It applies wherever a contrastive or SigLIP-style loss is used (Stage 3). The alternative is to rely on non-contrastive objectives only, which variant E already does for Stages 1–2.
+
+**G5 · Collapse guard.** Predicting latent targets (JEPA) can collapse: the model outputs the same summary for every input and the loss is trivially low. The EMA target encoder reduces this risk but does not rule it out. G5 adds a VICReg-style variance term that penalises any embedding dimension whose standard deviation across the batch falls below a floor: `L_var = mean_d max(0, γ − std(z_d))`. It is cheap and also serves as a health metric during training.
+
+**Combined objective for variant G:**
+
+`L_G = L_next + λ_f · L_future + λ_j · L_jepa(pair-aware, adaptive, info-weighted masks) + λ_v · L_var + Stage 3 alignment (with routine-aware positives)`
+
+followed by Stage 4 (weak supervision and per-home adaptation) unchanged.
+
+**How we will know it works.** Same backbone, data and compute as A–F; only the objective changes. Success means:
+
+- **Training health:** the loss falls steadily rather than collapsing to near zero in the first few hundred steps, and embedding variance stays above the floor.
+- **Downstream:** G is at least as good as E/F on activity F1 at 1–5 % labels, and better on forecasting (NLL at 10 and 60 minutes), missed-routine detection, and anomaly AUROC on injected faults.
+- **Real data:** pretraining gives a measurable gain over no pretraining on UCI B and hh101, which DomusFM's objective did not.
+
+**Implementation notes.** G1 and G2 extend `structured_mask` in `src/homefm/objectives/masking.py`; G3 adds a head on the causal stream in `src/homefm/objectives/next_event.py` and reuses the EMA target from `latent_mask.py`; G4 changes the positive mask in `alignment.py`; G5 is a small loss term shared by the latent objectives. A `configs/objectives/G_refined.yaml` config would select them.
 
 ## 9. Downstream heads and analytics engines
 
