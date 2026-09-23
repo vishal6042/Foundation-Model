@@ -27,6 +27,7 @@
    - [8.0 In plain words](#80-in-plain-words)
    - [8.4 Proposed refinements (variant G)](#84-proposed-refinements-variant-g)
    - [8.5 Setup and training, step by step](#85-setup-and-training-step-by-step)
+   - [8.6 DomusFM masking vs HomeFM games, on one window](#86-domusfm-masking-vs-homefm-games-on-one-window)
 9. [Downstream heads and analytics engines](#9-downstream-heads-and-analytics-engines)
 10. [Query agent](#10-query-agent)
    - [10.1 How the agent reads HomeFM outputs](#101-how-the-agent-reads-homefm-outputs)
@@ -1988,6 +1989,122 @@ Variant **E** = games 1 + 2 (the planned comparison against DomusFM). Variant **
 | Game 3 (variant F) | ✅ code, small data only |
 | Fine-tune and test protocol | ✅ (shared with the DomusFM run) |
 | Teacher → student | 📐 |
+
+### 8.6 DomusFM masking vs HomeFM games, on one window
+
+§8.1 explains in general why masking alone is not enough. This section compares the two approaches on one concrete window, and states exactly what pretraining changes.
+
+#### What pretraining trains, and what it does not
+
+| Part | Trained during pretraining? |
+|---|---|
+| Device sentence embeddings (frozen text encoder, §6.5) | ❌ Never. Made once at setup. |
+| Event embedding (attribute fusion: device + value + time + type) | ✅ Learned |
+| Minute summary (moment encoder) | ✅ Learned |
+| Stream transformer (minutes in context) | ✅ Learned |
+| Game heads (the parts that make the guesses) | ✅ Learned |
+
+"Pretraining the embeddings" means teaching the learnable parts to turn Home Tokens into useful vectors. Without labels, the only way is a game: the vectors improve because better vectors win the game. **The game therefore decides what the vectors learn**, and this is where DomusFM and HomeFM differ.
+
+```mermaid
+flowchart TB
+    subgraph DOM["DomusFM: hide a little, then recognise your own window"]
+        direction LR
+        W1["Window of 30 events"] --> A["Original → model → average<br/>window vector A"]
+        W1 --> MSK["Hide 1 attribute or a few<br/>whole events (about 15 %)"]
+        MSK --> B["Masked → model → average<br/>window vector B"]
+        A --> G["Among 64 windows,<br/>pick your own B"]
+        B --> G
+        G --> R1["Never asked what was hidden<br/>one check per window"]
+    end
+    subgraph HOM["HomeFM: recover what is unknown"]
+        direction LR
+        W2["Window of 30 minutes"] --> G1["Game 1: after every event,<br/>predict the next one<br/>device · value · time until"]
+        W2 --> HID["Game 2: hide a big chunk<br/>minutes · device · room · signal type"]
+        HID --> G2["Predict the meaning<br/>of each hidden minute"]
+        G1 --> R2["Must recover the unknown<br/>dozens of checks per window"]
+        G2 --> R2
+    end
+```
+
+#### DomusFM's game
+
+Each DomusFM event has five attributes: item, sensor type, room, status and time.
+
+- **Phase 1, attribute masking:** for about 15 % of events, one attribute is hidden. `18:29 fridge door · contact · kitchen · OPEN` becomes `18:29 fridge door · contact · kitchen · ???`.
+- **Phase 2, event masking:** for about 15 % of events, all attributes are hidden. `18:30 stove · power · kitchen · ON` becomes `??? · ??? · ??? · ???`. The event-level layers are frozen in this phase.
+
+In both phases the game is the same. The original window and the masked window each go through the model and are averaged into window vectors A and B. In a batch of 64 windows, each A must pick out its own B (InfoNCE). **The model is never asked what the hidden attribute or event was.** The masking is damage, and the task is to recognise the window despite it.
+
+Why this teaches little on home data:
+
+1. **Recognising yourself is easy.** 28 of 30 events are untouched, so A and B are nearly identical.
+2. **Timestamps give it away.** Every window has unique times, which act as a fingerprint even when some bits are hidden.
+3. **Nothing forces understanding.** Because the hidden part never has to be recovered, knowing that "the stove usually follows the fridge" gives no advantage.
+4. **Similar routines are pushed apart.** Two ordinary nights of sleep in one batch count as different windows (false negatives).
+
+#### HomeFM's games on the same window
+
+```
+18:28 kitchen motion · 18:29 fridge OPEN · 18:30 stove 1,850 W · 18:31 kitchen motion · … · 18:37 stove OFF · 18:38 dining light ON
+```
+
+**Game 1, predict the next event.** After every event, the model must state what actually comes next: which device, what value and how long until it happens.
+
+| After seeing | Must predict | Actual |
+|---|---|---|
+| Kitchen motion | Device, value, time until | Fridge OPEN, 60 s later |
+| Fridge OPEN | … | Stove **1,850 W**, 51 s later |
+| Stove ON | … | Kitchen motion, 75 s later |
+
+Every event is a question, so one window gives dozens of guesses. The future is genuinely unseen, so there is no copy to peek at and no fingerprint to exploit. To win, the vectors must encode routines, order, values and timing.
+
+**Game 2, recover the meaning of a big hidden chunk.** For example, 18:30–18:36 is hidden entirely (or every kitchen event, or every power reading):
+
+```
+18:28 kitchen motion · 18:29 fridge OPEN · [ 18:30–18:36 HIDDEN ] · 18:37 stove OFF · 18:38 dining light ON
+```
+
+The model must predict each hidden minute's vector, as produced by a copy of the model that saw everything. Unlike DomusFM, it **has to recover the hidden part**. The chunk is large and structured, so no ON/OFF partner is left to copy from, and the model has to reason from context ("fridge before, stove off and dining light after: the gap was cooking"). The answer is per minute rather than one averaged window, and there are no negatives, so similar nights are never pushed apart.
+
+#### Side by side
+
+| | DomusFM masking | HomeFM game 1 | HomeFM game 2 |
+|---|---|---|---|
+| **What is hidden** | 1 attribute, or a few whole events (about 15 %) | The future: the next event | A big block: minutes, a device, a room or a signal type |
+| **Must it recover the hidden thing?** | ❌ No, only recognise its own window | ✅ Device, value and time | ✅ The meaning of each hidden minute |
+| **Guesses per window** | 1 (the whole window) | One per event (dozens) | One per hidden minute |
+| **Cheap shortcuts** | Timestamps, untouched events, ON/OFF pairs | None: the future is unseen | Few: neighbours are hidden too |
+| **Similar routines** | Pushed apart (false negatives) | No negatives | No negatives |
+| **Loss in practice** | About 0.001 within 1,000 of 40,000 steps (solved) | Expected to fall gradually | Expected to fall gradually |
+| **What the vectors learn** | To stay stable when bits are removed | Routines, order, timing, values | How the parts of a home fit together |
+
+#### How it should help the real tasks
+
+| Real task | Why HomeFM's games should help |
+|---|---|
+| Recognising activities with few labels | The vectors already encode "fridge → stove → evening", so a few labels only attach the name "cooking" |
+| "When will Dad be up?" | Game 1 directly trains "how long until the next event" |
+| "Anything unusual?" | Game 1's guesses give the surprise score: a door at 03:12 is a very wrong guess, so it is flagged |
+| Counting, starts and ends | Game 2's per-minute answers make every minute's vector meaningful |
+| Missing or broken sensors | Game 2 hides whole devices and rooms, so the model learns to cope when one is silent |
+
+DomusFM's game trains none of these directly, which fits its measured results.
+
+#### Evidence so far
+
+The 77-home DomusFM run (2026-09-24), activity recognition with 5 % of labels on held-out homes, 6 of 7 finished:
+
+| Test home | With DomusFM pretraining | Without pretraining |
+|---|---|---|
+| UCI B | 0.25 | 0.22 |
+| hh101 | 0.49 | **0.56** |
+| hh103 | 0.54 | **0.68** |
+| hh105 | 0.36 | **0.41** |
+| hh110 | 0.32 | 0.33 |
+| hh119 | 0.35 | **0.41** |
+
+DomusFM's game is solved almost immediately and gives no gain, and mostly a loss (full results in [DOMUSFM_REPRODUCTION.md](DOMUSFM_REPRODUCTION.md)). The HomeFM games are **reasons to expect** better results, not proof. Variant E (games 1 + 2) is implemented and tested on small data, and the 77-home comparison is the next run. It succeeds if the HomeFM loss falls gradually rather than collapsing, and pretrained HomeFM beats HomeFM without pretraining on the held-out homes, especially with 5 % of labels.
 
 ## 9. Downstream heads and analytics engines
 
