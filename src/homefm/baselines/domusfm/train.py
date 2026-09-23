@@ -68,20 +68,43 @@ def pretrain_loader(windows: list[DomusWindows], batch_size: int, n_samples: int
                       pin_memory=torch.cuda.is_available(), persistent_workers=workers > 0)
 
 
-def pretrain(model: DomusFM, loader: DataLoader, cfg: dict, device, log=print) -> list[dict]:
-    """Dual contrastive pretraining. Phase 2 freezes the event-level feature extractor (§4.3)."""
-    history = []
-    for phase, steps in (("attribute", cfg["steps_phase1"]), ("event", cfg["steps_phase2"])):
+def pretrain(model: DomusFM, loader: DataLoader, cfg: dict, device, log=print, ckpt_path=None) -> list[dict]:
+    """Dual contrastive pretraining. Phase 2 freezes the event-level feature extractor (§4.3).
+
+    If `ckpt_path` is given, saves model + optimiser + position every `ckpt_every` steps and resumes from it,
+    so an interruption loses at most `ckpt_every` steps.
+    """
+    history, start_phase, start_step, opt_state = [], "attribute", 0, None
+    every = cfg.get("ckpt_every", 2000)
+    if ckpt_path is not None and ckpt_path.exists():
+        ck = torch.load(ckpt_path, map_location="cpu")
+        model.load_state_dict(ck["model"])
+        history, start_phase, start_step, opt_state = ck["history"], ck["phase"], ck["step"], ck["opt"]
+        log(f"  resuming pretraining from {start_phase} step {start_step}")
+    phases = (("attribute", cfg["steps_phase1"]), ("event", cfg["steps_phase2"]))
+    for phase, steps in phases:
+        if start_phase == "event" and phase == "attribute":
+            continue
         if phase == "event":
             model.event.requires_grad_(False)
         params = [p for p in model.parameters() if p.requires_grad]
         opt = torch.optim.AdamW(params, lr=cfg["lr"], weight_decay=cfg["weight_decay"])
-        step, t0 = 0, time.time()
+        step = 0
+        if phase == start_phase and start_step:
+            step = start_step
+            if opt_state is not None:
+                opt.load_state_dict(opt_state)
+        t0 = time.time()
         model.train()
         while step < steps:
             for batch in loader:
                 if step >= steps:
                     break
+                if ckpt_path is not None and step and step % every == 0:
+                    tmp = ckpt_path.with_suffix(".tmp")
+                    torch.save({"model": model.state_dict(), "opt": opt.state_dict(), "phase": phase,
+                                "step": step, "history": history}, tmp)
+                    tmp.replace(ckpt_path)  # atomic: a crash mid-save never corrupts the last checkpoint
                 x = _to(batch, device)
                 B, L = x["status"].shape
                 m = attribute_mask(B, L, cfg["attr_mask_p"], device) if phase == "attribute" else \

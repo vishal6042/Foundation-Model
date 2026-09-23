@@ -50,7 +50,7 @@ class _StreamArrays:
         self.conf = np.asarray(conf, dtype=np.float32)
         raw = np.asarray(raw, dtype=np.float64)
         self.has_value = ~np.isnan(raw)
-        # per-entity z-score for scalar values (no binarisation, DESIGN.md ง4.1 L2)
+        # per-entity z-score for scalar values (no binarisation, DESIGN.md ยง4.1 L2)
         value = np.zeros_like(raw)
         for e in np.unique(self.ent[self.has_value]):
             sel = (self.ent == e) & self.has_value

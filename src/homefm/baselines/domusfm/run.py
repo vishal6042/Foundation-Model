@@ -99,8 +99,12 @@ def main():
 
     W, ft = cfg["window"], cfg["finetune"]
     held_out = cfg.get("held_out") or [d.name for d in datasets if d.name not in pretrain_only]
-    results = {}
-    pt = cfg["pretrain"]
+    results_path = out_dir / "results.json"
+    # resume: keep every result already saved and skip it (a restart loses at most the setting in progress)
+    results = json.loads(results_path.read_text()) if cfg.get("resume", True) and results_path.exists() else {}
+    if results:
+        done = sum(len(r["results"]) for r in results.values())
+        print(f"[domusfm] resuming: {done} results already in {results_path.name}", flush=True)
     targets = [d for d in datasets if d.name in held_out]
     shared = cfg.get("pretrain_mode", "per_target") == "shared"
     shared_state, shared_hist = None, []
@@ -119,18 +123,24 @@ def main():
         if cfg.get("ablation_no_pretrain"):
             states["w/o Pretrain"] = None
 
-        res = {}
+        entry = results.setdefault(target.name, {"results": {}, "pretrain_history": history, "seconds": 0.0})
+        res = entry["results"]
         for task in ft["tasks"]:
             k = 0 if task == "adl" else int(task.removeprefix("next"))
-            windows = DomusWindows(target, text, W, 1, k=k)
+            windows = None
             for pct in ft["train_pcts"]:
                 for name, st in states.items():
+                    key = f"{task}|{int(pct * 100)}%|{name}"
+                    if key in res:
+                        continue
+                    windows = windows or DomusWindows(target, text, W, 1, k=k)
                     r = finetune_and_eval(st, ctor, windows, "adl" if task == "adl" else "nextk", pct, ft, device,
                                           seed=cfg["seed"])
-                    res[f"{task}|{int(pct * 100)}%|{name}"] = r
-                    print(f"  {task:6s} {int(pct * 100):3d}% {name:13s} {r['mean']:.3f} � {r['std']:.3f}", flush=True)
-        results[target.name] = {"results": res, "pretrain_history": history, "seconds": time.time() - t0}
-        (out_dir / "results.json").write_text(json.dumps(results, indent=2))
+                    res[key] = r
+                    entry["seconds"] += time.time() - t0
+                    t0 = time.time()
+                    results_path.write_text(json.dumps(results, indent=2))  # save after every setting
+                    print(f"  {task:6s} {int(pct * 100):3d}% {name:13s} {r['mean']:.3f} ± {r['std']:.3f}", flush=True)
 
     write_table(results, ft, out_dir / "results.md")
     print(f"\n[domusfm] saved {out_dir / 'results.json'} and results.md")
@@ -149,9 +159,11 @@ def get_pretrained(cfg, ctor, text, pool, ckpt: Path, device):
     loader = pretrain_loader([DomusWindows(d, text, W, pt["stride"]) for d in pool], pt["batch_size"],
                              pt["batch_size"] * (pt["steps_phase1"] + pt["steps_phase2"]), pt.get("num_workers", 0))
     model = ctor().to(device)
-    history = pretrain(model, loader, pt, device, log=lambda m: print(m, flush=True))
+    progress = ckpt.with_name(ckpt.stem + "_progress.pt")  # mid-pretraining checkpoint, removed when done
+    history = pretrain(model, loader, pt, device, log=lambda m: print(m, flush=True), ckpt_path=progress)
     state = fresh_copy(model)
     torch.save({"state": state, "history": history, "pool": [d.name for d in pool]}, ckpt)
+    progress.unlink(missing_ok=True)
     return state, history
 
 
