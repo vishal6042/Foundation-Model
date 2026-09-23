@@ -278,6 +278,8 @@ Domains are open-ended; question **types** are a small, closed set. Every type m
 
 **In one picture:** DomusFM is like a guard who watches only on/off lights, remembers the last 30 blinks, assumes one person lives in the house, and can only name activities it was shown examples of. HomeFM aims to be a guard who also reads meters, hears and sees (through on-device detectors), remembers weeks, knows who is who, and understands plain words.
 
+A plain-language walkthrough of every limitation (why DomusFM made each choice, a side-by-side example, and what is built) is in [LIMITATIONS_AND_REMEDIES.md](LIMITATIONS_AND_REMEDIES.md).
+
 For each limitation below:
 
 - **In simple words:** the problem without jargon.
