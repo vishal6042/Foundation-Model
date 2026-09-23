@@ -7,6 +7,7 @@
 ## Table of contents
 
 1. [Overview](#1-overview)
+   - [1.1 Key terms in plain words](#11-key-terms-in-plain-words)
 2. [Goals and non-goals](#2-goals-and-non-goals)
 3. [Requirements](#3-requirements)
 4. [Prior work: DomusFM and its gaps](#4-prior-work-domusfm-and-its-gaps)
@@ -45,6 +46,62 @@ Users should be able to ask a smart home **any question in natural language** an
 Questions span activity recognition, security events, pets, childcare, elderly care, device defects, energy and anomaly detection. The domain list is open-ended, so the system is designed around a **small set of question types** and an **open-vocabulary foundation model**, not around per-question detectors.
 
 **Core principle:** the foundation model and perception experts *understand* the home and turn raw signals into structured, searchable facts (events, episodes, states, scores). A database *counts*. An LLM agent *plans* which tools to call. Numbers in answers always come from tools, never from the LLM.
+
+### 1.1 Key terms in plain words
+
+Every term below uses the same example: one evening in one kitchen. The terms are listed in the order data flows through the system.
+
+**The data**
+
+| Term | Plain meaning | Kitchen example |
+|---|---|---|
+| **Event** | One thing a sensor reported, at one moment. The smallest piece of information. | "18:31:02, stove plug, 1,850 W" or "18:29, fridge door, opened" |
+| **Home Token** | The same event rewritten in one standard format, so events from any brand or type of sensor look alike (§6.1). | `time=18:31:02, device="stove in kitchen", value=1850 W` |
+| **Event store** | A plain database table of every event: the house's raw logbook (§6.3). | 10,000 rows for today, one per sensor report |
+
+**What the model does**
+
+| Term | Plain meaning | Kitchen example |
+|---|---|---|
+| **Vector** (embedding) | A list of a few hundred numbers that describes something. Things with similar meaning get similar lists. It is how a computer holds "meaning". | Two cooking minutes get similar lists. A cooking minute and a sleeping minute get very different ones. |
+| **Moment** (minute summary) | All events in one minute squeezed into one vector. The model thinks in minutes, not single events (§7). | 18:31: stove on, 2 motions, fridge opened, all turned into one vector |
+| **Context** | The model reads each minute together with the minutes before it, like reading a sentence instead of a single word. | "18:31, stove on" plus "someone came in at 18:28, it's dinnertime" means probably cooking |
+| **HomeFM** (the foundation model) | The part that turns events into minute vectors that carry context. It understands the house's activity but does not give answers itself. | |
+| **Pretraining** | Teaching HomeFM, before it ever sees your home, by letting it study many other homes' data without anyone labelling anything (§8). | It learns "stove, kitchen motion and evening usually go together" |
+| **Head** | A small add-on that reads a minute vector and gives one specific answer. There is one head per job (§9). | Cooking head: "0.93 chance this minute is cooking". Occupancy head: "1 person in the kitchen" |
+
+**From minutes to things you can count**
+
+| Term | Plain meaning | Kitchen example |
+|---|---|---|
+| **Episode** | One occurrence of an activity, with a start and an end, built by joining consecutive minutes that the head marked as that activity. This is what "how many times" counts (§9.1). | Minutes 18:30 → 19:22 marked "cooking" make **1 episode** of cooking |
+| **Episode rules** | Simple per-activity rules for joining or dropping minutes. | "A break shorter than 10 min is still the same cooking." "Under 3 min is not cooking", so a 1-minute microwave use is not counted. |
+| **Episode store** | A database table of episodes: the house's diary of activities, in plain text. | `cooking, 18:30–19:22, kitchen, confidence 0.94` |
+| **Concept** | An activity or thing the system can talk about, written as a word plus a short sentence. | `cooking`, described as "someone is cooking food in the kitchen" |
+| **Ontology** | The house's dictionary: which rooms, devices, people and concepts exist, and what nicknames mean (§6.2). | "kid" → Aarav, and the stove is in the kitchen |
+
+**"A sentence instead of learned weights"**
+
+In DomusFM, each activity the model knows is a row of numbers learned from labelled examples. The only way to add a new activity is to collect examples and retrain. In HomeFM, each activity is **a sentence**. The sentence is turned into a vector, and each minute vector is compared with it. The closer they are, the more likely that minute is that activity.
+
+- **DomusFM** is like a checklist with fixed boxes. A new box needs retraining.
+- **HomeFM** is like describing what you are looking for in words. Something new is just a new description.
+
+For example, "someone is vacuuming" gives a new activity immediately, without collecting labelled examples first (§4.1 L1).
+
+**Answering a question**
+
+| Term | Plain meaning | Example |
+|---|---|---|
+| **Vector store** (e.g. Qdrant) | A database that saves the minute vectors and can quickly find "the minutes most similar to X". It searches by meaning rather than by exact words. | Find the minutes most like "someone is vacuuming" |
+| **Agent** (LLM) | The chat part that reads the question, calls tools and writes the reply. It never calculates anything itself (§10). | |
+| **Tool** | A function the agent calls to fetch facts. | `query_episodes(cooking, 16:00–20:00)` → 2 episodes |
+| **Bridge 1** (stored facts) | For known activities: the answer is already sitting in the episode store. It is fast and reliable (§10.1). | "Cooking today?" is a table lookup |
+| **Bridge 2** (search by meaning) | For activities nobody stored: search the vector store with a sentence. It is slower and less certain (§10.1). | "Frying today?" searches for minutes like "frying food in a pan" |
+| **Label** | A human saying "this stretch was cooking". Optional in HomeFM: it improves accuracy but is not needed for an activity to exist. | The user replies "that was just tea" |
+| **Confidence** | How sure the system is, shown with every answer. | "2 times (high confidence)" |
+
+**The whole flow in one line:** sensors report **events** → the model reads them **minute by minute, in context** → **heads** say what each minute looks like → minutes are joined into **episodes** and written into the **diary** → a user asks a question → the **agent** looks it up in the diary, or **searches by meaning** if it is not there → it answers with **times and confidence**. §10.2 walks through this flow in full for one question.
 
 ## 2. Goals and non-goals
 
