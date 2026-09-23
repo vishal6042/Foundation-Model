@@ -1446,6 +1446,16 @@ flowchart TB
 | Student | 20–50M (int8) | Edge hub | Streaming inference, per-home adaptation |
 | Scaffold `tiny` | ~1–3M | Laptop / CI | Smoke tests, objective ablations on synthetic data |
 
+**Vector size (d) of the current runs.** DomusFM uses d = 384 to match MiniLM's output, so its device vectors need no projection. HomeFM has a projection after MiniLM (§7.4), so its d is free. The first HomeFM corpus configuration uses **d = 256** for practical reasons: HomeFM runs more parts per window (event fusion, moment encoder, stream transformer, event read-out) and game 2 runs a second, slowly updated copy of the model, so a smaller size keeps a 20,000-step run to a few hours on one RTX 4090; a small model also shows early whether a hub-sized model can work; and 256 splits evenly into 8 attention heads of 32. **This size was chosen, not tuned.**
+
+| Configuration | d | Layers × heads | Learnable parameters |
+|---|---|---|---|
+| DomusFM reimplementation (`configs/domusfm_corpus.yaml`) | 384 | 12 × 12 | 28,596,480 |
+| HomeFM corpus (`configs/homefm_corpus.yaml`) | 256 | 6 × 8 (stream) + 2 (read-out) | 8,031,004 |
+| HomeFM corpus, size-matched (`configs/homefm_corpus_384.yaml`) | 384 | 12 × 12 (stream) + 2 (read-out) | 28,591,516 |
+
+Parameter counts are for the model with 30 one-minute positions (`HomeFM.n_parameters()`, including the next-event head), excluding the game-2 predictor and its slowly updated copy, which belong to the training objective. The size-matched configuration exists so the comparison with DomusFM cannot be explained by model size (§12). The teacher (300M–1B) would use a much larger d, for example 768 or 1,024.
+
 ### 7.4 Inside one minute: from Home Tokens to the transformer
 
 This section follows one minute, **18:31**, from its Home Tokens to the stream transformer. The same steps run in training and in live use (§5.2). The only difference is that in training all three steps are adjusted together by the practice games, while in live use the weights are fixed.
@@ -1495,6 +1505,119 @@ Each Home Token supplies four facts, and one small attention layer lets them inf
 | **Meta** | Signal type and confidence | power reading · 1.0 |
 
 Fusion matters because the same device means different things in different contexts: kitchen motion at 07:00 and at 23:30 should not look identical.
+
+#### Step 1 in detail: the four attribute encoders
+
+As in DomusFM, **each fact has its own small encoder**. All four produce vectors of the same size (d = 256 in the corpus configuration, 384 in the size-matched one), so they can be fused. The code is `EventEmbedder` in `src/homefm/model/embedder.py`.
+
+```mermaid
+flowchart LR
+    TOK["Home Token<br/>18:30:05 · stove (row 2)<br/>1,850 W · scalar · conf 1.0"]
+    subgraph WHAT["WHAT"]
+        W1["Device registry row<br/>MiniLM sentence embedding<br/>384 numbers (frozen)"] --> W2["Linear projection<br/>384 → d (learned)"]
+    end
+    subgraph VALUE["VALUE"]
+        V1["State embedding<br/>ON / OFF / NA"] --> VS(("+"))
+        V2["Number, normalised per device<br/>→ small network"] --> VS
+    end
+    subgraph WHEN["WHEN"]
+        T1["Cyclic hour and weekday<br/>sin/cos → linear"] --> TS(("+"))
+        T2["log time since previous event<br/>log time since this device last fired<br/>→ small network"] --> TS
+    end
+    subgraph META["META"]
+        M1["Modality embedding<br/>5 learned vectors"] --> MS(("+"))
+        M2["Confidence<br/>→ linear"] --> MS
+    end
+    TOK --> W1
+    TOK --> V1
+    TOK --> V2
+    TOK --> T1
+    TOK --> T2
+    TOK --> M1
+    TOK --> M2
+    W2 --> F["+ attribute-type tag on each<br/>1 self-attention layer across the 4<br/>average · normalise"]
+    VS --> F
+    TS --> F
+    MS --> F
+    F --> EV["Event vector (d numbers)"]
+```
+
+**1 · What (the device).**
+
+| Part | What it does | Trained? |
+|---|---|---|
+| Sentence encoder (MiniLM, a Sentence-BERT model) | "stove in kitchen, power sensor" → 384 numbers, once per device, stored in the device registry | ❌ Frozen |
+| Linear projection | 384 numbers → d numbers | ✅ Learned |
+
+A **linear projection** is a small learned converter: each of the d output numbers is a weighted sum of the 384 input numbers, plus a constant, and the weights are learned in training. A toy example turning 4 numbers into 2: with input `[0.1, 0.2, 0.9, 0.3]`, output 1 = 0.5·0.1 + 1.0·0.9 = 0.95 and output 2 = 1.0·0.2 + 0.5·0.3 = 0.35. It is needed for two reasons:
+
+- **Size matching.** MiniLM always outputs 384 numbers, and all four facts must be the same size (d) to be fused. DomusFM does not need a projection because its d is 384.
+- **Adapting general language to homes.** MiniLM was trained on general text, not smart homes, and it stays frozen. The projection learns which parts of its meaning matter for home behaviour (for example, the room may matter more than the exact item word), like a graphic equaliser that boosts some frequencies of an unchanged song.
+
+Training MiniLM itself instead would mean about 22 million learnable numbers and a risk of forgetting general language, which is what lets HomeFM understand devices it never saw (a "smart lock"). The projection has about 98,000 (384 × 256 + 256).
+
+**2 · Value (what the device reported).**
+
+| Part | What it does | Trained? |
+|---|---|---|
+| State embedding | A learned vector for ON, OFF or NA (no on/off state, such as a power reading) | ✅ |
+| Number network (two linear layers with a non-linearity between them) | Turns the number into a vector. Used only if the event has a number. | ✅ |
+
+The two are added. Numbers are **normalised per device** before going in: the device's own mean is subtracted and the result divided by its spread, then capped at ±5. So 1,850 W from a stove that averages 300 W becomes about +2.1, "much higher than usual for this stove". Without this, watts and degrees would be on wildly different scales.
+
+*Design note:* per-device normalisation keeps "unusually high for this device" but drops the absolute amount (1,850 W and 180 W can both become about +2). The device vector already says "stove" or "fridge", and exact amounts for energy questions come from the raw event store, not the model. Also feeding the log of the raw number is a possible improvement.
+
+For a detector event, the value also carries the tag's numbers from the tag vocabulary (§6.4) and, if sent, the detector's own embedding (planned).
+
+**3 · When (the timing).**
+
+| Part | What it does | Trained? |
+|---|---|---|
+| Cyclic time of day | The hour, with fractions (18:30 = 18.5), as positions on a circle: sin and cos at 4 speeds, so 23:59 and 00:01 come out close together | Fixed formula + learned projection |
+| Cyclic weekday | The same for the 7-day cycle | Fixed formula + learned projection |
+| Gap network (small network) | Two gaps on a log scale: time since the previous event in the home, and time since this device last fired. On a log scale, 1 s and 10 s differ a lot, and 5 h and 5 h 10 s barely differ. | ✅ |
+
+The cyclic part and the gap part are added.
+
+**4 · Meta (what kind of signal, and how reliable).**
+
+| Part | What it does | Trained? |
+|---|---|---|
+| Modality embedding | A lookup table of 5 learned vectors, one per signal type | ✅ |
+| Confidence projection | Turns the confidence (1.0 for a sensor, 0.87 for "baby crying") into a vector | ✅ |
+
+The two are added. **Modality** is the kind of signal an event is:
+
+| # | Modality | Example |
+|---|---|---|
+| 0 | Binary (on/off) | Kitchen motion ON, door OPEN |
+| 1 | Scalar (a number) | Fridge 180 W, bathroom 85 % humidity |
+| 2 | Audio tag | Nursery microphone: "baby crying", 0.87 |
+| 3 | Vision tag | Doorbell camera: "parcel at door", 0.92 |
+| 4 | Embedding | A detector's own vector, or a text message turned into numbers |
+
+Each event looks up the vector for its modality (`meta_emb = nn.Embedding(5, d)`). The model needs it for three reasons:
+
+- **To read the value correctly.** A value of 0 is OFF for a binary sensor but "exactly average" for a normalised meter reading.
+- **Different kinds of evidence behave differently.** A door contact is precise; an audio tag is a noisy guess that the TV can trigger; a meter's trend matters more than one reading. A separate learned vector per kind, together with the confidence, lets the model weigh each kind appropriately.
+- **Game 2 hides whole modalities** (all power readings, all audio tags), which teaches the model to cope when a kind of signal is missing, such as a home without microphones.
+
+The device sentence also hints at the kind of signal, but the modality is a clean, explicit label that is the same in every home whatever the device was named, and it costs only 5 vectors. DomusFM has no modality embedding, because all its events are binary.
+
+**Fusion.** Each of the four vectors gets a learned **attribute-type tag** so the model knows which is which. One self-attention layer lets the four look at each other (this is how "kitchen motion at 07:00" becomes different from "kitchen motion at 23:30"). The four are then averaged and normalised into one event vector.
+
+**Compared with DomusFM**
+
+| Fact | DomusFM | HomeFM |
+|---|---|---|
+| Device | **Three** separate sentence embeddings: item, sensor type, room (MiniLM, frozen), used directly | **One** sentence embedding of "{item} in {room}, {type} sensor" (MiniLM, frozen) + a learned projection |
+| Value | Status only: a learned vector for OFF, ON or MASK | A learned vector for ON, OFF or NA **+ a network on the number** |
+| Time | Cyclic weekday + cyclic hour + a learned vector for each of the 3,600 seconds in the hour | Cyclic weekday + cyclic hour (with fractions) **+ a gap network** (time since the last event, time since this device last fired) |
+| Meta | None | Modality + confidence |
+| Attribute vectors | 5 (item, type, room, status, time) | 4 (what, value, when, meta) |
+| Fusion | One self-attention layer across the 5, then average | One self-attention layer across the 4, then average and normalise |
+
+HomeFM keeps DomusFM's idea (one encoder per attribute, frozen Sentence-BERT for the device, cyclic time, attention fusion) and adds numbers (L2), gaps between events (rhythm) and signal type with reliability. One difference goes the other way: DomusFM keeps three separate text vectors for the device, while HomeFM uses one combined sentence. That is simpler, but the head-to-head comparison could show it matters.
 
 #### Step 2 · Moment encoder: one summary per minute
 
@@ -2630,6 +2753,15 @@ CASAS (Milan, Aruba, several HH homes), Kasteren, UCI B, Orange4Home, ARAS and M
 | Edge | Latency, RAM, energy | Hub-class device |
 
 **Baselines:** DomusFM reproduction (primary), DeepCASAS, Chronos, GPT-2-style event model, zero-shot LLM.
+
+**Size-matched comparison with DomusFM.** The first HomeFM corpus run (d = 256, about 8.0M parameters) is 3.5× smaller than DomusFM (about 28.6M). If it wins, the result is stronger; if it loses, the cause could be the games or the size. The fairest test, HomeFM with pretraining against HomeFM without pretraining, is unaffected because both sides have the same size. To separate the two explanations, the plan has two HomeFM runs on the same data, held-out homes and fine-tuning protocol as the DomusFM run:
+
+| Run | Config | Answers |
+|---|---|---|
+| HomeFM E, d = 256 (about 8.0M) | `configs/homefm_corpus.yaml` | Can a small model with better games beat DomusFM? |
+| HomeFM E, d = 384 (about 28.6M, matched) | `configs/homefm_corpus_384.yaml` | Is HomeFM better than DomusFM **at the same size**? |
+
+Neither run has been started. They are launched only on request, one at a time on the GPU.
 
 ## 13. Deployment, privacy and edge
 

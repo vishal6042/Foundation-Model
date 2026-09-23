@@ -1,0 +1,73 @@
+# HomeFM variant E at DomusFM's size (~28.6M parameters, matching DomusFM's 28,596,480), so the comparison with
+# configs/domusfm_corpus.yaml is size-matched (DESIGN.md §7.3, §12). Everything else is identical to homefm_corpus.yaml.
+# Run (only when asked): .venv/Scripts/python -u -m homefm.experiments.corpus_compare --config configs/homefm_corpus_384.yaml
+seed: 0
+device: auto
+out_dir: runs/homefm_corpus_384
+held_out: [uci_b, hh101, hh103, hh105, hh110, hh119, hh122]
+ablation_no_pretrain: true
+
+datasets:
+  cache_dir: data/cache/casas
+  list:
+    - {kind: uci_adl, id: uci_b, path: "data/raw/uci/UCI ADL Binary Dataset", home: B}
+    - {kind: casas_fast, id: hh101, path: data/raw/casas/labeled/hh101.csv}
+    - {kind: casas_fast, id: hh103, path: data/raw/casas/labeled/hh103.csv}
+    - {kind: casas_fast, id: hh105, path: data/raw/casas/labeled/hh105.csv}
+    - {kind: casas_fast, id: hh110, path: data/raw/casas/labeled/hh110.csv}
+    - {kind: casas_fast, id: hh119, path: data/raw/casas/labeled/hh119.csv}
+    - {kind: casas_fast, id: hh122, path: data/raw/casas/labeled/hh122.csv}
+    - {kind: casas_fast_glob, path: "data/raw/casas/labeled/*.csv", pretrain_only: true}
+    - {kind: casas_fast, id: milan, path: data/raw/casas/data/milan.csv, pretrain_only: true}
+    - {kind: casas_fast, id: aruba, path: data/raw/casas/data/aruba.csv, pretrain_only: true}
+
+text_encoder:                 # same frozen encoder as DomusFM
+  kind: sentence_transformer
+  model_name: sentence-transformers/all-MiniLM-L6-v2
+
+window:
+  span_s: 1800                # 30-minute windows of 60 s moments
+  moment_s: 60
+  max_events: 256             # keep the most recent events when a window is busier
+
+model:                        # size-matched to DomusFM: 28,591,516 parameters with 30 moments
+  d_model: 384                # = DomusFM and MiniLM width
+  n_heads: 12                 # = DomusFM
+  n_latents: 4
+  n_stream_layers: 12         # = DomusFM depth
+  n_readout_layers: 2
+  dropout: 0.1
+  n_mixture: 8
+
+objective:                    # variant E (DESIGN.md §8.3)
+  name: composite
+  parts:
+    - {name: next_event, weight: 1.0, value_weight: 1.0}
+    - name: latent_mask
+      weight: 1.0
+      ema: 0.996
+      block_moments: [3, 10]
+      mask_weights: {time_block: 0.4, entity: 0.2, room: 0.2, modality: 0.1, info_weighted: 0.1}
+
+pretrain:
+  stride_s: 600
+  batch_size: 32
+  steps: 20000
+  lr: 3.0e-4
+  weight_decay: 0.05
+  warmup_steps: 500
+  log_every: 500
+  num_workers: 0
+
+finetune:                     # identical to domusfm_corpus.yaml
+  tasks: [adl, next30]
+  train_pcts: [0.05, 0.30]
+  folds: 3
+  fold_mode: contiguous
+  epochs: 10
+  batch_size: 64
+  eval_batch_size: 256
+  lr: 1.0e-4
+  weight_decay: 0.01
+  max_test_windows: 20000
+  num_workers: 0
