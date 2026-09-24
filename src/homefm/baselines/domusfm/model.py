@@ -104,6 +104,37 @@ class DomusFM(nn.Module):
         return sum(p.numel() for p in self.parameters())
 
 
+class PretrainHeads(nn.Module):
+    """Pretraining-only heads (not part of the backbone; discarded before fine-tuning). Not in the paper.
+
+    projector: SimCLR-style MLP so InfoNCE shapes the projection, not the backbone features.
+    mlm: predicts masked attributes from context. Text attributes are scored against the frozen text table
+    (works across homes with different sensor vocabularies); status is a 2-way classifier. Unlike the
+    contrastive game, this cannot be solved by recognising the window, because the answer is hidden.
+    """
+
+    def __init__(self, d: int, text_table: torch.Tensor, proj_dim: int = 128):
+        super().__init__()
+        self.projector = nn.Sequential(nn.Linear(d, d), nn.GELU(), nn.Linear(d, proj_dim))
+        self.register_buffer("text_table", F.normalize(text_table.float(), dim=-1))
+        self.text_q = nn.ModuleList(nn.Linear(d, text_table.shape[1]) for _ in range(3))  # item, type, room
+        self.status = nn.Linear(d, 2)
+        self.log_scale = nn.Parameter(torch.tensor(math.log(10.0)))
+
+    def mlm_loss(self, h: torch.Tensor, x: dict, mask: torch.Tensor) -> torch.Tensor:
+        """h: [B, L, d] contextualised masked view; mask: [B, L, 5]. Mean CE over masked attributes."""
+        losses = []
+        for a, (key, q) in enumerate(zip(("item", "stype", "room"), self.text_q)):
+            sel = mask[..., a]
+            if sel.any():
+                logits = F.normalize(q(h[sel]), dim=-1) @ self.text_table.t() * self.log_scale.exp()
+                losses.append(F.cross_entropy(logits, x[key][sel]))
+        sel = mask[..., A_STATUS]
+        if sel.any():
+            losses.append(F.cross_entropy(self.status(h[sel]), x["status"][sel]))
+        return torch.stack(losses).mean() if losses else h.sum() * 0
+
+
 class ADLHead(nn.Module):
     """Linear layer on the contextualised embedding of the window's last event (§6.4.3; last-event is an ASSUMPTION)."""
 

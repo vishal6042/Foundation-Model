@@ -153,6 +153,30 @@ Findings:
 3. **More data does not fix it.** The earlier run with far fewer pretraining homes showed the same pattern (hh101 ADL 5 %: 0.49 vs 0.57). Scaling the corpus to 77 homes left it unchanged.
 4. The collapse of the contrastive loss to about 0.0005 fits the diagnosis in DESIGN.md §8.1 and §8.6: the "recognise your own window" game is solved through shortcuts (timestamps, untouched events, ON/OFF pairs), so it teaches features that do not help downstream and can hinder fine-tuning.
 
+#### Why pretraining did not help, and the fix
+
+The loss at step 0 is already 2.35, below chance (ln 128 = 4.85), and reaches about 0.001 by step 1,000. The game is solved through shortcuts in the code, not by learning behaviour:
+
+| # | Shortcut | Where | Fix (config key, off by default = paper) |
+|---|---|---|---|
+| 1 | Negatives from other homes. `BalancedSampler` picks a home per window, so the 128 windows in a batch come from about 77 homes, and the frozen text embeddings of sensor names alone tell them apart. | `train.py` `BalancedSampler` | `pretrain.homes_per_batch: 4`: each batch has 4 homes × 32 windows, so negatives come from the same home |
+| 2 | Timestamp fingerprint. The `sec` embedding gives the exact second of every event, and 85 % of events stay visible after masking. | `model.py` time attribute | `pretrain.time_jitter_s: 900`: each view's clock is shifted by up to ±15 min, which keeps the gaps between events and the time of day |
+| 3 | One view is the clean window, so 85 % of it matches the masked view exactly. | `pretrain()` | `pretrain.mask_both_views: true`, `attr_mask_p`/`event_mask_p: 0.4`, `temperature: 0.2` |
+| 4 | No projection head. InfoNCE at τ = 0.07 shapes the backbone itself for telling windows apart, which fine-tuning must then undo (pretrained is worse than scratch). | `pretrain()` | `pretrain.projector: true`: an MLP, discarded after pretraining |
+| 5 | Nothing to predict. Every answer is visible. | objective | `pretrain.mlm_weight: 1.0`: predict the hidden item/type/room (scored against the frozen text table, so it works across homes) and the ON/OFF status |
+| 6 | One LR for the pretrained backbone and the fresh head, with no warmup. | `finetune_and_eval` | `finetune.backbone_lr: 5e-5`, `head_lr: 1e-3`, `warmup_frac: 0.1` (also applied to the w/o-pretrain baseline) |
+
+All six are combined in `configs/domusfm_corpus_fixed.yaml`. The log now shows `contrastive`, `mlm` and `z_std` (the spread of the embeddings; near 0 means collapse).
+
+Sanity check on 6 synthetic homes (d = 64, 2 layers, batch 64, chance = 4.16), InfoNCE at steps 0/100/200/300:
+
+| Game | Contrastive | Masked-attribute loss |
+|---|---|---|
+| Paper | 2.01 → 0.17 → 0.11 → 0.06 (collapses) | — |
+| Fixed | 3.44 → 1.38 → 1.22 → 1.09 (still learning) | 3.11 → 1.31 → 0.93 → 0.67 |
+
+The loss not collapsing is necessary but not sufficient. Success means pretrained beats w/o pretrain on the held-out homes, which needs the corpus run. On real data the loss should stay well above 0.01; if it still drops below about 0.05, raise the masking to 0.5–0.6 or set `homes_per_batch: 1`.
+
 Next, on request: the strong-masking DomusFM run, and HomeFM variant E at 8.0M (`configs/homefm_corpus.yaml`) and size-matched at 28.6M (`configs/homefm_corpus_384.yaml`).
 
 Fast loading: `casas_fast.py` parses a home into numpy arrays in ~0.1 s and caches it as `.npz`

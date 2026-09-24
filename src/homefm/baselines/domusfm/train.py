@@ -11,7 +11,7 @@ import torch.nn.functional as F
 from torch.utils.data import ConcatDataset, DataLoader, Sampler, Subset
 
 from .data import DomusWindows
-from .model import N_ATTR, ADLHead, DomusFM, NextKHead
+from .model import N_ATTR, ADLHead, DomusFM, NextKHead, PretrainHeads
 
 
 def _to(batch: dict, device) -> dict:
@@ -37,6 +37,20 @@ def event_mask(B: int, L: int, p: float, device) -> torch.Tensor:
     return (torch.rand(B, L, device=device) < p).unsqueeze(-1).expand(B, L, N_ATTR)
 
 
+def time_jitter(x: dict, max_s: int) -> dict:
+    """Shift each window's clock by one random offset in [-max_s, max_s] s (not in the paper).
+
+    Keeps the gaps between events but breaks the exact seconds-within-hour pattern, which otherwise
+    fingerprints a window and lets the contrastive game be solved without learning behaviour.
+    """
+    if not max_s:
+        return x
+    t = x["dow"] * 86400 + x["hour"] * 3600 + x["sec"]
+    off = torch.randint(-max_s, max_s + 1, (t.shape[0], 1), device=t.device)
+    t = (t + off) % (7 * 86400)
+    return {**x, "dow": t // 86400, "hour": (t % 86400) // 3600, "sec": t % 3600}
+
+
 class BalancedSampler(Sampler):
     """Dataset-level oversampling (§6.1.2): pick a dataset uniformly, then a window uniformly within it.
 
@@ -60,12 +74,46 @@ class BalancedSampler(Sampler):
         return iter((self.offsets[ds] + idx).tolist())
 
 
-def pretrain_loader(windows: list[DomusWindows], batch_size: int, n_samples: int, workers: int = 0) -> DataLoader:
-    """Dataset-level random oversampling so small datasets contribute proportionally (§6.1.2)."""
+class HomeBatchSampler(Sampler):
+    """Each batch holds `homes_per_batch` homes (uniform), with batch_size // homes_per_batch windows each.
+
+    With mixed-home batches almost every in-batch negative comes from another home, and the frozen text
+    embeddings alone tell them apart. Same-home negatives force the model to separate windows by behaviour.
+    """
+
+    def __init__(self, lengths: list[int], n_batches: int, batch_size: int, homes_per_batch: int, seed: int = 0):
+        assert batch_size % homes_per_batch == 0, "batch_size must be divisible by homes_per_batch"
+        self.lengths = np.array(lengths)
+        self.offsets = np.concatenate([[0], np.cumsum(self.lengths)[:-1]])
+        self.n_batches, self.per_home, self.homes = n_batches, batch_size // homes_per_batch, homes_per_batch
+        self.seed, self.epoch = seed, 0
+
+    def __len__(self) -> int:
+        return self.n_batches
+
+    def __iter__(self):
+        rng = np.random.default_rng(self.seed + self.epoch)
+        self.epoch += 1
+        for _ in range(self.n_batches):
+            ds = np.repeat(rng.choice(len(self.lengths), self.homes, replace=self.homes > len(self.lengths)),
+                           self.per_home)
+            idx = (rng.random(len(ds)) * self.lengths[ds]).astype(np.int64)
+            yield (self.offsets[ds] + idx).tolist()
+
+
+def pretrain_loader(windows: list[DomusWindows], batch_size: int, n_samples: int, workers: int = 0,
+                    homes_per_batch: int | None = None) -> DataLoader:
+    """Dataset-level random oversampling so small datasets contribute proportionally (§6.1.2).
+
+    homes_per_batch: None = mix homes freely (paper); k = every batch comes from k homes (hard negatives).
+    """
     cat = ConcatDataset(windows)
-    sampler = BalancedSampler([len(w) for w in windows], n_samples)
-    return DataLoader(cat, batch_size=batch_size, sampler=sampler, num_workers=workers, drop_last=True,
-                      pin_memory=torch.cuda.is_available(), persistent_workers=workers > 0)
+    kw = dict(num_workers=workers, pin_memory=torch.cuda.is_available(), persistent_workers=workers > 0)
+    lengths = [len(w) for w in windows]
+    if homes_per_batch:
+        return DataLoader(cat, batch_sampler=HomeBatchSampler(lengths, n_samples // batch_size, batch_size,
+                                                              homes_per_batch), **kw)
+    return DataLoader(cat, batch_size=batch_size, sampler=BalancedSampler(lengths, n_samples), drop_last=True, **kw)
 
 
 def pretrain(model: DomusFM, loader: DataLoader, cfg: dict, device, log=print, ckpt_path=None) -> list[dict]:
@@ -73,12 +121,22 @@ def pretrain(model: DomusFM, loader: DataLoader, cfg: dict, device, log=print, c
 
     If `ckpt_path` is given, saves model + optimiser + position every `ckpt_every` steps and resumes from it,
     so an interruption loses at most `ckpt_every` steps.
+
+    Optional fixes for the collapse seen on real data (all off by default = paper; see
+    docs/DOMUSFM_REPRODUCTION.md, "Why pretraining did not help"): `mask_both_views`, `time_jitter_s`,
+    `projector`, `mlm_weight` (and `homes_per_batch` in `pretrain_loader`).
     """
     history, start_phase, start_step, opt_state = [], "attribute", 0, None
     every = cfg.get("ckpt_every", 2000)
+    both, jitter, mlm_w = cfg.get("mask_both_views", False), cfg.get("time_jitter_s", 0), cfg.get("mlm_weight", 0.0)
+    heads = None
+    if cfg.get("projector", False) or mlm_w:
+        heads = PretrainHeads(model.cfg.d, model.event.text_table).to(device)
     if ckpt_path is not None and ckpt_path.exists():
         ck = torch.load(ckpt_path, map_location="cpu")
         model.load_state_dict(ck["model"])
+        if heads is not None and ck.get("heads") is not None:
+            heads.load_state_dict(ck["heads"])
         history, start_phase, start_step, opt_state = ck["history"], ck["phase"], ck["step"], ck["opt"]
         log(f"  resuming pretraining from {start_phase} step {start_step}")
     phases = (("attribute", cfg["steps_phase1"]), ("event", cfg["steps_phase2"]))
@@ -88,6 +146,8 @@ def pretrain(model: DomusFM, loader: DataLoader, cfg: dict, device, log=print, c
         if phase == "event":
             model.event.requires_grad_(False)
         params = [p for p in model.parameters() if p.requires_grad]
+        if heads is not None:
+            params += list(heads.parameters())
         opt = torch.optim.AdamW(params, lr=cfg["lr"], weight_decay=cfg["weight_decay"])
         step = 0
         if phase == start_phase and start_step:
@@ -96,6 +156,8 @@ def pretrain(model: DomusFM, loader: DataLoader, cfg: dict, device, log=print, c
                 opt.load_state_dict(opt_state)
         t0 = time.time()
         model.train()
+        if heads is not None:
+            heads.train()
         while step < steps:
             for batch in loader:
                 if step >= steps:
@@ -103,25 +165,39 @@ def pretrain(model: DomusFM, loader: DataLoader, cfg: dict, device, log=print, c
                 if ckpt_path is not None and step and step % every == 0:
                     tmp = ckpt_path.with_suffix(".tmp")
                     torch.save({"model": model.state_dict(), "opt": opt.state_dict(), "phase": phase,
-                                "step": step, "history": history}, tmp)
+                                "step": step, "history": history,
+                                "heads": heads.state_dict() if heads is not None else None}, tmp)
                     tmp.replace(ckpt_path)  # atomic: a crash mid-save never corrupts the last checkpoint
                 x = _to(batch, device)
                 B, L = x["status"].shape
-                m = attribute_mask(B, L, cfg["attr_mask_p"], device) if phase == "attribute" else \
-                    event_mask(B, L, cfg["event_mask_p"], device)
-                z1 = model.window_embedding(model(x))
-                z2 = model.window_embedding(model(x, attr_mask=m))
-                loss = info_nce(z1, z2, cfg["temperature"])
+                mask_fn = (lambda: attribute_mask(B, L, cfg["attr_mask_p"], device)) if phase == "attribute" else \
+                    (lambda: event_mask(B, L, cfg["event_mask_p"], device))
+                m1, m2 = (mask_fn() if both else None), mask_fn()
+                h1, h2 = model(time_jitter(x, jitter), attr_mask=m1), model(time_jitter(x, jitter), attr_mask=m2)
+                z1, z2 = model.window_embedding(h1), model.window_embedding(h2)
+                if heads is not None and cfg.get("projector", False):
+                    z1, z2 = heads.projector(z1), heads.projector(z2)
+                loss_c = info_nce(z1, z2, cfg["temperature"])
+                loss_m = torch.zeros((), device=device)
+                if mlm_w:
+                    loss_m = heads.mlm_loss(h2, x, m2)
+                    if m1 is not None:
+                        loss_m = 0.5 * (loss_m + heads.mlm_loss(h1, x, m1))
+                loss = loss_c + mlm_w * loss_m
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(params, 1.0)
                 opt.step()
                 if step % cfg["log_every"] == 0:
-                    history.append({"phase": phase, "step": step, "loss": loss.item()})
-                    log(f"  pretrain[{phase}] step {step:5d} loss {loss.item():.4f} ({time.time() - t0:.0f}s)")
+                    # z_std: spread of the normalised embeddings across the batch; near 0 = collapse
+                    z_std = F.normalize(z2.detach(), dim=-1).std(0).mean().item()
+                    history.append({"phase": phase, "step": step, "loss": loss.item(), "contrastive": loss_c.item(),
+                                    "mlm": loss_m.item(), "z_std": z_std})
+                    log(f"  pretrain[{phase}] step {step:5d} loss {loss.item():.4f} (contrastive {loss_c.item():.4f}"
+                        f" mlm {loss_m.item():.4f} z_std {z_std:.3f}) ({time.time() - t0:.0f}s)")
                 step += 1
     model.event.requires_grad_(True)
-    return history
+    return history  # `heads` are pretraining-only and are dropped here
 
 
 # ---- downstream -----------------------------------------------------------------------------
@@ -190,9 +266,14 @@ def finetune_and_eval(state: dict | None, model_ctor, windows: DomusWindows, tas
         head = (ADLHead(backbone.cfg.d, n_classes) if task == "adl"
                 else NextKHead(backbone.cfg.d, windows.d.n_event_types)).to(device)
         params = list(backbone.parameters()) + list(head.parameters())  # full fine-tuning (§6.1.3)
-        opt = torch.optim.AdamW(params, lr=cfg["lr"], weight_decay=cfg["weight_decay"])
+        # backbone_lr / head_lr / warmup_frac are not in the paper; defaults (lr, lr, 0) reproduce it
+        opt = torch.optim.AdamW([{"params": backbone.parameters(), "lr": cfg.get("backbone_lr", cfg["lr"])},
+                                 {"params": head.parameters(), "lr": cfg.get("head_lr", cfg["lr"])}],
+                                weight_decay=cfg["weight_decay"])
         train_loader = DataLoader(Subset(windows, train_idx), batch_size=cfg["batch_size"], shuffle=True,
                                   drop_last=len(train_idx) > cfg["batch_size"])
+        warmup = int(cfg.get("warmup_frac", 0.0) * cfg["epochs"] * len(train_loader))
+        sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda i: min(1.0, (i + 1) / warmup) if warmup else 1.0)
         test_sub = test_idx[:: max(1, len(test_idx) // cfg["max_test_windows"])] if cfg.get("max_test_windows") else test_idx
         test_loader = DataLoader(Subset(windows, test_sub), batch_size=cfg["eval_batch_size"])
 
@@ -207,6 +288,7 @@ def finetune_and_eval(state: dict | None, model_ctor, windows: DomusWindows, tas
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(params, 1.0)
                 opt.step()
+                sched.step()
         res = _evaluate(backbone, head, test_loader, task, device)
         scores.append(weighted_f1_multiclass(*res, n_classes) if task == "adl" else res)
     return {"mean": float(np.mean(scores)), "std": float(np.std(scores)), "folds": [float(s) for s in scores]}
