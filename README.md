@@ -5,6 +5,7 @@ device health, energy and anomaly questions answered from one open-vocabulary mo
 
 **Start with the design:** [docs/DESIGN.md](docs/DESIGN.md), which covers requirements, DomusFM gaps with
 scenarios, architecture diagrams, the pretraining recipe, evaluation and the roadmap.
+Training data and its structure: [docs/DATA.md](docs/DATA.md).
 
 ## Setup
 
