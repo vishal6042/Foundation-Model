@@ -24,6 +24,19 @@ Where the files go (git-ignored):
 | B | `data/raw/casas/data/milan.csv`, `aruba.csv` (from `data.zip`) | same |
 | D | `data/raw/uci/UCI ADL Binary Dataset/OrdonezB_Sensors.txt`, `OrdonezB_ADLs.txt` | `uci_adl.py` |
 
+### Download links
+
+| Groups | File | Link |
+|---|---|---|
+| A, C | CASAS 2025 release, record page | https://zenodo.org/records/15708568 |
+| A, C | `labeled_data.zip` (236 MB, one CSV per labelled home) | https://zenodo.org/records/15708568/files/labeled_data.zip?download=1 |
+| B | `data.zip` (2.7 GB; only `milan.csv` and `aruba.csv` are used) | https://zenodo.org/records/15708568/files/data.zip?download=1 |
+| D | UCI ADL Binary dataset (id 271) | https://archive.ics.uci.edu/dataset/271/activities+of+daily+living+adls+recognition+using+binary+sensors |
+
+- Unzip `labeled_data.zip` into `data/raw/casas/labeled/`, and put `milan.csv` and `aruba.csv` in `data/raw/casas/data/`.
+- **Not in the DomusFM paper:** all 75 group-A homes and the 6 group-C homes. The paper's 7 datasets were the older annotated Milan and Aruba, UCI Home B, Kasteren A and C, Orange4Home and MuRAL. Of those, only UCI Home B is used here as a test home. Milan and Aruba are used unlabelled, for pretraining only.
+- The zip holds 83 homes according to the download notes in [DOMUSFM_REPRODUCTION.md](DOMUSFM_REPRODUCTION.md), but the run loaded 81 (75 + 6). The per-home list in §2.1 is the authoritative set, taken from the run log.
+
 ## 2. Raw data formats, group by group
 
 ### 2.1 Groups A and C: CASAS labelled homes
