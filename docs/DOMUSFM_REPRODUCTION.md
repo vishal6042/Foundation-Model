@@ -175,6 +175,8 @@ Sanity check on 6 synthetic homes (d = 64, 2 layers, batch 64, chance = 4.16), I
 | Paper | 2.01 → 0.17 → 0.11 → 0.06 (collapses) | — |
 | Fixed | 3.44 → 1.38 → 1.22 → 1.09 (still learning) | 3.11 → 1.31 → 0.93 → 0.67 |
 
+To run it with a live progress view (pretraining steps, ETA, loss curve with a collapse warning, results table as homes finish): `.venv/Scripts/python scripts/domusfm_train.py start`; `watch` re-attaches and `stop` stops it.
+
 The loss not collapsing is necessary but not sufficient. Success means pretrained beats w/o pretrain on the held-out homes, which needs the corpus run. On real data the loss should stay well above 0.01; if it still drops below about 0.05, raise the masking to 0.5–0.6 or set `homes_per_batch: 1`.
 
 Next, on request: the strong-masking DomusFM run, and HomeFM variant E at 8.0M (`configs/homefm_corpus.yaml`) and size-matched at 28.6M (`configs/homefm_corpus_384.yaml`).

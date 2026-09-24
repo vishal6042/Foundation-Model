@@ -21,6 +21,9 @@ py -3.11 -m venv .venv
 .venv/Scripts/python -m pytest -q                                              # tests
 .venv/Scripts/python -m homefm.train.pretrain --objective configs/objectives/E_next_event_latent.yaml
 .venv/Scripts/python scripts/run_ablation.py --set train.steps=2000           # A–F objective ablation
+.venv/Scripts/python scripts/domusfm_train.py start                           # DomusFM with collapse fixes, in the background + live progress
+.venv/Scripts/python scripts/domusfm_train.py watch                           # re-attach the progress view (Ctrl+C leaves training running)
+.venv/Scripts/python scripts/domusfm_train.py stop                            # stop; `start` again resumes from the last checkpoint
 ```
 
 Runs write `runs/<name>/model.pt` and `results.json`; the ablation writes `runs/ablation.json`.
