@@ -1,6 +1,6 @@
 # Training data
 
-What data HomeFM and the DomusFM baseline are trained and tested on, how it is structured on disk, and how it is turned into model input. For results see [DOMUSFM_REPRODUCTION.md](DOMUSFM_REPRODUCTION.md); for the long-term data plan see [DESIGN.md](DESIGN.md) §11.
+What data the DomusFM reproduction (and later HomeFM) is trained and tested on, how it is structured on disk, and how it is turned into model input. §1–3 describe the DomusFM reproduction exactly as it runs; §4 is HomeFM only. For results see [DOMUSFM_REPRODUCTION.md](DOMUSFM_REPRODUCTION.md); for the long-term data plan see [DESIGN.md](DESIGN.md) §11.
 
 ## 1. The four data groups at a glance
 
@@ -161,17 +161,124 @@ Start time           End time             Activity
 | Who did it | not recorded | not recorded | not recorded | not recorded |
 | Used for | pretraining | pretraining | fine-tune + test | fine-tune + test |
 
-All four are converted into the same Home Token format (§3), so the models never see these differences in file layout, only in sensors and activities.
+All four end up in the same DomusFM arrays and 30-event windows (§3), so the model never sees these differences in file layout, only in sensors and activities.
 
-## 3. The common format all groups are converted into (Home Tokens)
+## 3. How the DomusFM reproduction reads the data
 
-Every source is converted into the same structure (`src/homefm/schema/events.py`, DESIGN.md §6.1):
+This is the path the 77-home DomusFM run actually takes (`src/homefm/baselines/domusfm/run.py`, `load_datasets`). It follows the paper: sensors become text attributes, everything becomes ON/OFF, and windows are the last 30 events. **Home Tokens (§4) are not part of it.**
+
+### 3.1 The pipeline for each group
+
+```
+Groups A, B, C (CASAS CSV)
+  raw CSV ──load_casas_fast──► per-home arrays (.npz cache) ──build_domus_from_arrays──► DomusFM arrays ──► 30-event windows
+
+Group D (UCI Home B)
+  2 TXT files ──load_uci_adl──► small in-memory list ──build_domus_dataset──► DomusFM arrays ──► 30-event windows
+```
+
+- **CASAS goes straight to numpy arrays.** `casas_fast.py` parses each CSV into arrays and caches them in `data/cache/casas/<home>.npz`, so later runs load in about 0.1 s. It was written because building one Python object per event was too slow for 27M events.
+- **UCI Home B** is tiny (4,668 events), so it is read into a small list of events first and then flattened the same way. The result is identical in form.
+
+### 3.2 Step 1: raw file → per-home arrays
+
+Each CASAS home becomes one set of arrays (`HomeArrays` in `casas_fast.py`):
+
+| Array | Type | One entry per | Meaning |
+|---|---|---|---|
+| `entities` | list of (id, item, room, sensor type, modality) | sensor | e.g. (`KitchenAStove\|motion`, "stove", "kitchen", "motion", binary) |
+| `ts` | float64 | event | Seconds; local time stored as if UTC |
+| `entity` | int32 | event | Index into `entities` |
+| `state` | int8 | event | OFF, ON, or NA for numeric readings |
+| `value` | float32 | event | The number for temperature and other readings, NaN otherwise |
+| `concepts` | list of text | activity | Activity names, lower-case, `_` → space |
+| `ep_start`, `ep_end`, `ep_concept` | arrays | labelled episode | Start, end and activity of each labelled episode |
+
+**Sensor name → text attributes** (`parse_sensor_name`): the room prefix is matched (`Kitchen`, `Bathroom`, `LoungeChair`, …), an instance letter becomes an ordinal (`B` → "second"), and the rest is split into words.
+
+| Raw sensor name | Item | Room | Type (from message) |
+|---|---|---|---|
+| `KitchenAStove` | stove | kitchen | motion (ON/OFF) |
+| `BathroomBToilet` | toilet | second bathroom | motion (ON/OFF) |
+| `OutsideDoor` | outside door | entrance | door contact (OPEN/CLOSE) |
+| `Kitchen` | kitchen area | kitchen | motion (ON/OFF) |
+| `KitchenATemperature` | air | kitchen | temperature (number) |
+
+**Labels → episodes:** a `Name="begin"` … `Name="end"` pair becomes one episode from begin to end; a plain `Name` on one event becomes an episode of zero length at that event. Milan and Aruba produce no episodes.
+
+### 3.3 Step 2: per-home arrays → DomusFM arrays
+
+`build_domus_from_arrays` (CASAS) and `build_domus_dataset` (UCI) in `src/homefm/baselines/domusfm/data.py` do three things:
+
+1. **Make everything ON/OFF** (paper §3.1). Door OPEN/CLOSE become ON/OFF. For each temperature or other numeric sensor, threshold = midpoint of its 10th and 90th percentile; a reading above it is ON, below is OFF, and only changes are kept. The actual number is dropped.
+2. **Encode each event as integers:** sensor index and status (0/1). Each sensor also keeps its three text attributes (item, sensor type, room), which a frozen MiniLM text encoder turns into vectors.
+3. **Give each event an activity label:** the activity whose episode covers the event's time. If episodes overlap, the shortest one wins. Events outside any episode get `Other` (class 0).
+
+Result per home (`DomusDataset`):
+
+| Field | One entry per | Meaning |
+|---|---|---|
+| `sensor_ids`, `sensor_text` | sensor | Sensor id and its (item, sensor type, room) text |
+| `activities` | activity | `["Other", …sorted activity names]` |
+| `sensor` | event | Sensor index |
+| `status` | event | 0 = OFF, 1 = ON |
+| `ts` | event | Seconds |
+| `label` | event | Activity index (0 = Other) |
+
+The event counts in §1 and §2 are counted at this stage.
+
+### 3.4 Step 3: DomusFM arrays → 30-event windows
+
+`DomusWindows` cuts a window ending at every event (stride 1), so there is about one window per event: 27,255,501 events gave 27,253,268 windows. One window:
+
+| Field | Shape | Meaning |
+|---|---|---|
+| `item`, `stype`, `room` | 30 | Text-attribute ids of each event's sensor |
+| `status` | 30 | ON/OFF of each event |
+| `dow`, `hour`, `sec` | 30 | Day of week, hour, second within the hour of each event |
+| `label` | 1 | Activity at the window's **last** event (ADL task) |
+| `next_counts` | 2 × number of sensors | How often each (sensor, ON/OFF) occurs in the **next** 30 events (next-30 task) |
+
+- **Pretraining** (groups A + B) uses only the inputs: `item`, `stype`, `room`, `status`, `dow`, `hour`, `sec`. `label` and `next_counts` are ignored.
+- **Fine-tuning and testing** (groups C + D) use `label` for ADL (weighted F1) and `next_counts` for next-30 (multiset F1), with 5 % or 30 % of the home's labels and 3 time-contiguous folds.
+
+### 3.5 Worked example: five CASAS lines
+
+Raw lines (from `tests/test_converters.py`):
+
+```
+2012-07-20,10:00:00.0,Kitchen,ON,Cook="begin"
+2012-07-20,10:00:05.0,Kitchen,OFF
+2012-07-20,10:01:00.0,OutsideDoor,OPEN
+2012-07-20,10:10:00.0,Kitchen,ON,Cook="end"
+2012-07-20,10:20:00.0,Bathroom,ON,Toilet
+```
+
+After steps 1 and 2:
+
+| # | Time | Sensor text (item, type, room) | Status | Label |
+|---|---|---|---|---|
+| 0 | 10:00:00 | kitchen area, motion, kitchen | 1 | cook |
+| 1 | 10:00:05 | kitchen area, motion, kitchen | 0 | cook |
+| 2 | 10:01:00 | outside door, door contact, entrance | 1 | cook |
+| 3 | 10:10:00 | kitchen area, motion, kitchen | 1 | cook |
+| 4 | 10:20:00 | bathroom area, motion, bathroom | 1 | toilet |
+
+`activities = ["Other", "cook", "toilet"]`. Rows 0–3 fall inside the cook episode (10:00–10:10), so all are labelled cook, including the door opening. That is how the paper's labelling works: the label is about time, not about which sensor fired. In a real file, step 3 would then take each run of 30 consecutive rows like these as one window.
+
+## 4. HomeFM only: Home Tokens and time-based windows
+
+**Not used by the DomusFM reproduction.** This is the format HomeFM (variants A–G) reads. It is described here because the HomeFM comparison run on the same homes uses the same raw files.
+
+### 4.1 Why HomeFM needs a richer format
+
+DomusFM's format drops things HomeFM needs: numeric readings (cut to ON/OFF), confidence of a detection, sound and camera tags, and who caused an event. The Home Token format keeps them (`src/homefm/schema/events.py`, DESIGN.md §6.1):
 
 ```
 HomeStream            one home
 ├── home_id           "hh101"
 ├── entities[]        Entity(entity_id, item, room, sensor_type, modality)
-│                     the model only sees the text: "stove in kitchen, motion sensor"
+│                     text seen by the model: "stove in kitchen, motion sensor"
 ├── tokens[]          HomeToken(ts, entity, state, value, confidence, source, person_id, home_id)
 ├── episodes[]        Episode(concept, start_ts, end_ts, room, caption)
 │                     caption = "the resident is doing: <concept>"
@@ -181,41 +288,18 @@ HomeStream            one home
 
 | Field | Values |
 |---|---|
-| `ts` | Unix seconds. CASAS local time is stored as if UTC, so hour and weekday features stay local |
-| `state` | `ON`, `OFF`, or `NA` for scalar and vector readings |
-| `value` | The number for scalar sensors (e.g. temperature), otherwise empty |
+| `state` | `ON`, `OFF`, or `NA` for numeric and vector readings |
+| `value` | The number for numeric sensors (e.g. 21 °C), kept as a number |
 | `modality` | `BINARY`, `SCALAR`, `AUDIO_TAG`, `VISION_DET`, `EMBEDDING` |
-| `person_id` | Always empty for public data: the datasets do not say who caused an event |
+| `confidence` | 1.0 for sensors; below 1 for audio/vision detector guesses |
+| `person_id` | Always empty for public data |
 | `anomalies` | Empty for public data; filled by synthetic homes with injected faults |
 
-**How CASAS names become text** (`parse_sensor_name`): the room prefix is matched (`Kitchen`, `Bathroom`, `LoungeChair`, …), an instance letter becomes an ordinal (`B` → "second"), and the rest is split into words: `KitchenAStove` → item "stove", room "kitchen"; `BedroomBArea` → "second bedroom area". No hand-written sensor maps are needed.
+At corpus scale HomeFM reads the same per-home CASAS arrays as DomusFM (§3.2, via `from_home_arrays` in `windowing.py`), which carry the same fields. Individual Home Token objects are used for UCI Home B, synthetic homes and tests.
 
-**How labels become episodes:** `begin`/`end` pairs become one episode with a start and end; a single labelled event becomes an episode of zero length. Episodes are used only for fine-tuning and testing, never in pretraining.
+### 4.2 Time-based windows
 
-## 4. What DomusFM trains on
-
-`src/homefm/baselines/domusfm/data.py` reshapes Home Tokens into the paper's format:
-
-1. **Binarise.** Scalar sensors become virtual ON/OFF events: threshold = midpoint of the sensor's 10th and 90th percentile, and only changes are emitted. The actual reading is discarded (DESIGN.md L2).
-2. **Encode each event as integers:** sensor index, status (0/1), timestamp, and the ids of its three text attributes (item, sensor type, room), which are embedded by a frozen text encoder.
-3. **Label each event** with the activity whose episode covers it. If episodes overlap, the shortest wins. Events outside any episode get `Other` (class 0).
-4. **Cut windows of the last 30 events, sliding by one event.** Because the stride is one event, there is about one window per event.
-
-One window:
-
-| Field | Shape | Meaning |
-|---|---|---|
-| `item`, `stype`, `room` | 30 | Text-attribute ids of each event's sensor |
-| `status` | 30 | ON/OFF |
-| `dow`, `hour`, `sec` | 30 | Day of week, hour, second within the hour |
-| `label` | 1 | Activity at the window's last event (ADL task) |
-| `next_counts` | 2 × number of sensors | Counts of each (sensor, ON/OFF) in the next 30 events (next-30 task) |
-
-Tasks: **ADL** (weighted F1) and **next-30** (multiset F1), fine-tuned on 5 % and 30 % of the target home's labels, with 3 time-contiguous folds.
-
-## 5. What HomeFM trains on
-
-`src/homefm/data/windowing.py` keeps the Home Tokens as they are (no binarisation) and cuts **time-based** windows instead of event-count windows:
+`src/homefm/data/windowing.py` does **not** convert to ON/OFF, and cuts windows by time instead of by event count:
 
 | Setting | Default (`WindowConfig`) | 77-home config (`configs/homefm_corpus.yaml`) |
 |---|---|---|
@@ -224,9 +308,9 @@ Tasks: **ADL** (weighted F1) and **next-30** (multiset F1), fine-tuned on 5 % an
 | Stride | 900 s | default |
 | Max events per window | — | 256 (keep the most recent when busier) |
 
-Each window is split into fixed 1-minute moments, so a busy and a quiet half hour both become 30 moments. Scalar values stay numbers, and minutes with no events are kept as empty moments. Each window gets one caption for language alignment: the activity that covers most of it, or "a quiet period at home" if none does.
+Each window is split into fixed 1-minute moments, so a busy and a quiet half hour both become 30 moments. Numeric values stay numbers, and minutes with no events are kept as empty moments. Each window gets one caption for language alignment: the activity that covers most of it, or "a quiet period at home" if none does.
 
-## 6. What this data cannot provide
+## 5. What this data cannot provide
 
 | Missing | Why it matters | Planned source (DESIGN.md §11) |
 |---|---|---|
