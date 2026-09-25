@@ -8,6 +8,9 @@ game and the fine-tuning learning rates change (the six fixes in
 
 ## Summary
 
+Plain-language version (what went wrong, the fixes, the improvement): [SUMMARY.md](SUMMARY.md).
+
+
 **The fixes work: pretraining now helps.** With the paper's game, the pretrained model lost to the same model
 trained from random weights on almost every home. With the fixes, it wins 26 of 28 settings (7 homes × 2 tasks ×
 2 label fractions), and the two losses are 0.01.
@@ -119,6 +122,7 @@ On an idle GPU, pretraining takes about 70 minutes.
 
 | File | Contents |
 |---|---|
+| `SUMMARY.md` | Plain-language summary: the problem, the fixes, the improvement |
 | `results.md` | This write-up |
 | `results.json` | Every result per held-out home, task, label fraction and fold, plus the pretraining loss history |
 | `train.log` | The full console log of the run (UTF-8) |
