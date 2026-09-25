@@ -118,7 +118,7 @@ Consecutive windows share 29 of 30 events, so random folds put near-duplicates o
 2. Pretraining corpus differs: room-level merged sensors in the 2025 CASAS release, and 5–13 sensor names per home.
 3. Unreported fine-tuning hyperparameters. A sweep on UCI B (LR 1e-4/3e-4, batch 16/64, 10/30 epochs) did not raise ADL above 0.27, so this is not the main cause.
 
-### Real datasets: run 2 (corpus-scale; paper masking done, the other two not started)
+### Real datasets: run 2 (corpus-scale; paper masking and fixed game done, the other two not started)
 
 Pretraining once on **77 homes / 27.3M events** (all labelled CASAS homes except the 7 targets, plus Milan and
 Aruba), then fine-tuning on the 7 targets (ADL and next-30; 5 % and 30 %; 3 contiguous folds).
@@ -178,6 +178,10 @@ Sanity check on 6 synthetic homes (d = 64, 2 layers, batch 64, chance = 4.16), I
 To run it with a live progress view (pretraining steps, ETA, loss curve with a collapse warning, results table as homes finish): `.venv/Scripts/python scripts/domusfm_train.py start`; `watch` re-attaches and `stop` stops it.
 
 The loss not collapsing is necessary but not sufficient. Success means pretrained beats w/o pretrain on the held-out homes, which needs the corpus run. On real data the loss should stay well above 0.01; if it still drops below about 0.05, raise the masking to 0.5–0.6 or set `homes_per_batch: 1`.
+
+#### Result: DomusFM with the fixes, 77-home pretraining (finished 2026-09-25)
+
+The fixes work. The contrastive loss stayed at 0.70–0.82 for all 40,000 steps, and pretrained now beats w/o pretrain in 26 of 28 settings. Mean difference over the 7 targets (pretrained − w/o PT): ADL 5 % **+0.076** (was −0.050), ADL 30 % **+0.059** (was −0.068), Next-30 5 % **+0.053** (was −0.009), Next-30 30 % **+0.030** (was +0.002). The w/o-pretrain baseline barely moved (ADL 5 % 0.441 vs 0.435), so the gain comes from pretraining. Full tables, per-fold spread and timings: [results/domusfm_corpus_fixed/results.md](../results/domusfm_corpus_fixed/results.md).
 
 Next, on request: the strong-masking DomusFM run, and HomeFM variant E at 8.0M (`configs/homefm_corpus.yaml`) and size-matched at 28.6M (`configs/homefm_corpus_384.yaml`).
 

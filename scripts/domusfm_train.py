@@ -314,6 +314,7 @@ def render(cfg: dict, overlay: str) -> tuple[str, bool]:
 def watch(cfg, overlay, every: float, once: bool):
     if os.name == "nt":
         os.system("")  # enable ANSI escape codes in the classic Windows console
+        sys.stdout.reconfigure(encoding="utf-8")  # cp1252 can't print the chart's block characters
     try:
         while True:
             text, finished = render(cfg, overlay)
