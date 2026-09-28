@@ -1,0 +1,33 @@
+<section id="model" data-transition="fade" style="background:#F7F6F2; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">Introduction · the model</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">How the model reads a home</h2>
+</div>
+<div style="display:flex; gap:24px; align-items:stretch">
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:32px">
+<p style="font-size:24px; font-weight:600; color:#2F6FB0">1</p>
+<h3 style="font-size:28px; font-weight:600; line-height:1.2">One sensor event</h3>
+<p style="font-size:24px; line-height:1.4; color:#3F4A5A">Item, type and room as text, embedded by a frozen MiniLM. Status ON or OFF. Time: day, hour, second.</p>
+</div>
+<x-shape kind="arrow-right" style="width:48px; height:24px; background:#9AA1AD; align-self:center"></x-shape>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:32px">
+<p style="font-size:24px; font-weight:600; color:#2F6FB0">2</p>
+<h3 style="font-size:28px; font-weight:600; line-height:1.2">Attribute attention</h3>
+<p style="font-size:24px; line-height:1.4; color:#3F4A5A">One transformer layer fuses the 5 attributes into a single event vector.</p>
+</div>
+<x-shape kind="arrow-right" style="width:48px; height:24px; background:#9AA1AD; align-self:center"></x-shape>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:32px">
+<p style="font-size:24px; font-weight:600; color:#2F6FB0">3</p>
+<h3 style="font-size:28px; font-weight:600; line-height:1.2">Context encoder</h3>
+<p style="font-size:24px; line-height:1.4; color:#3F4A5A">A 12-layer transformer, 12 heads, width 384, reads a window of 30 events. No positional encoding.</p>
+</div>
+<x-shape kind="arrow-right" style="width:48px; height:24px; background:#9AA1AD; align-self:center"></x-shape>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:32px">
+<p style="font-size:24px; font-weight:600; color:#2F6FB0">4</p>
+<h3 style="font-size:28px; font-weight:600; line-height:1.2">Task heads</h3>
+<p style="font-size:24px; line-height:1.4; color:#3F4A5A">ADL: the activity at the last event. Next-30: which events come next, and how many.</p>
+</div>
+</div>
+<p style="font-size:28px; line-height:1.4; color:#3F4A5A">28.6M parameters in total. The paper reports 36.1M; the gap is unexplained, since layer widths such as the feed-forward size (2048 here) are not reported.</p>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 4</p>
+</section>

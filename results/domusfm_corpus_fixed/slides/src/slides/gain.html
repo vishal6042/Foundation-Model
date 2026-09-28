@@ -1,0 +1,38 @@
+<section id="gain" data-transition="fade" style="background:#F7F6F2; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">Results · gain from pretraining</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Pretraining helps in every setting</h2>
+</div>
+<svg aria-label="Bar chart of mean F1 gain from pretraining over 7 homes: ADL 5 percent plus 0.076, ADL 30 percent plus 0.059, Next-30 5 percent plus 0.053, Next-30 30 percent plus 0.030." width="1000" height="480" viewBox="0 0 1000 480" xmlns="http://www.w3.org/2000/svg" style="position:absolute; left:240px; top:340px; width:1000px; height:480px">
+<g stroke="#DDE1E7" stroke-width="1.5">
+<line x1="0" y1="20" x2="1000" y2="20"/>
+<line x1="0" y1="240" x2="1000" y2="240"/>
+</g>
+<rect x="75" y="125.6" width="100" height="334.4" rx="4" fill="#2F6FB0"/>
+<rect x="325" y="200.4" width="100" height="259.6" rx="4" fill="#2F6FB0"/>
+<rect x="575" y="226.8" width="100" height="233.2" rx="4" fill="#2F6FB0"/>
+<rect x="825" y="328" width="100" height="132" rx="4" fill="#2F6FB0"/>
+<line x1="0" y1="460" x2="1000" y2="460" stroke="#5F6B7A" stroke-width="2"/>
+</svg>
+<p style="position:absolute; left:128px; top:343px; width:96px; font-size:24px; text-align:right; color:#5F6B7A">+0.10</p>
+<p style="position:absolute; left:128px; top:563px; width:96px; font-size:24px; text-align:right; color:#5F6B7A">+0.05</p>
+<p style="position:absolute; left:128px; top:783px; width:96px; font-size:24px; text-align:right; color:#5F6B7A">0</p>
+<p style="position:absolute; left:305px; top:426px; width:120px; font-size:24px; font-weight:600; text-align:center; color:#14213D">+0.076</p>
+<p style="position:absolute; left:555px; top:500px; width:120px; font-size:24px; font-weight:600; text-align:center; color:#14213D">+0.059</p>
+<p style="position:absolute; left:805px; top:527px; width:120px; font-size:24px; font-weight:600; text-align:center; color:#14213D">+0.053</p>
+<p style="position:absolute; left:1055px; top:628px; width:120px; font-size:24px; font-weight:600; text-align:center; color:#14213D">+0.030</p>
+<p style="position:absolute; left:240px; top:832px; width:250px; font-size:24px; text-align:center; color:#3F4A5A">ADL · 5 %</p>
+<p style="position:absolute; left:490px; top:832px; width:250px; font-size:24px; text-align:center; color:#3F4A5A">ADL · 30 %</p>
+<p style="position:absolute; left:740px; top:832px; width:250px; font-size:24px; text-align:center; color:#3F4A5A">Next-30 · 5 %</p>
+<p style="position:absolute; left:990px; top:832px; width:250px; font-size:24px; text-align:center; color:#3F4A5A">Next-30 · 30 %</p>
+<div style="position:absolute; left:1320px; top:340px; width:472px; display:flex; flex-direction:column; gap:16px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:32px">
+<h3 style="font-size:28px; font-weight:600; line-height:1.2">Homes where pretraining wins</h3>
+<p style="font-size:26px; color:#3F4A5A">ADL 5 %: <b>7</b> of 7</p>
+<p style="font-size:26px; color:#3F4A5A">ADL 30 %: <b>6</b> of 7</p>
+<p style="font-size:26px; color:#3F4A5A">Next-30 5 %: <b>7</b> of 7</p>
+<p style="font-size:26px; color:#3F4A5A">Next-30 30 %: <b>6</b> of 7</p>
+</div>
+<p style="position:absolute; left:1320px; top:700px; width:472px; font-size:24px; line-height:1.4; color:#3F4A5A">Total: 26 of 28 settings. The two losses are about 0.01, within noise.</p>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 11 · Gain = pretrained F1 − from-scratch F1, mean over 7 held-out homes</p>
+<aside>The gain shrinks as labels grow (ADL +0.076 to +0.059, Next-30 +0.053 to +0.030). That is the expected shape when pretraining is useful: it matters most when labels are scarce.</aside>
+</section>

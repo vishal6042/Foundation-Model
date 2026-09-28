@@ -1,0 +1,21 @@
+<section id="takeaway" data-transition="fade" style="background:#2F6FB0; color:#FCFCFB; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; justify-content:center; gap:40px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#E3EDF8">The short version</p>
+<p style="font-family:'Source Serif 4', Georgia, serif; font-size:240px; font-weight:600; line-height:1">26 of 28</p>
+<p style="font-size:44px; line-height:1.3; width:1500px">settings where pretrained DomusFM beats the same model trained from scratch, on 7 homes it never saw during pretraining.</p>
+<div style="display:flex; gap:96px">
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">+0.076</p>
+<p style="font-size:24px; color:#E3EDF8">Activity F1 gain, 5 % labels</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">+0.053</p>
+<p style="font-size:24px; color:#E3EDF8">Next-30 F1 gain, 5 % labels</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">0.70–0.82</p>
+<p style="font-size:24px; color:#E3EDF8">Training loss held, no collapse</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#E3EDF8">DomusFM reproduction · 2</p>
+<aside>7 held-out homes, 2 tasks, 2 label fractions = 28 comparisons. Pretrained wins 26; the two losses are about 0.01 each, within noise. Gains are means over the 7 homes.</aside>
+</section>

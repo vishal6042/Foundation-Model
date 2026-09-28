@@ -1,0 +1,18 @@
+<section id="fixes" data-transition="fade" style="background:#EDF0F4; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">Pretraining design</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">A harder matching game</h2>
+</div>
+<table style="font-size:24px; color:#14213D">
+<tr style="background:#DDE3EC"><th style="width:25%">Change</th><th style="width:50%">What it does</th><th style="width:25%">Config setting</th></tr>
+<tr><td>1 · Same-home candidates</td><td>Each batch holds 4 homes × 32 windows, so sensor names give nothing away</td><td>homes_per_batch: 4</td></tr>
+<tr><td>2 · Clock jitter</td><td>Shifts each copy's clock by up to ±15 min; gaps and time of day are kept</td><td>time_jitter_s: 900</td></tr>
+<tr><td>3 · Mask both copies</td><td>Hides 40 % of both copies, with a softer temperature</td><td>mask_both_views, 0.4, τ 0.2</td></tr>
+<tr><td>4 · Projection head</td><td>A small MLP plays the game and is dropped after pretraining</td><td>projector: true</td></tr>
+<tr><td>5 · Fill in the blanks</td><td>Predicts the hidden item, type, room and ON/OFF status</td><td>mlm_weight: 1.0</td></tr>
+<tr><td>6 · Gentler fine-tuning</td><td>Backbone LR 5e-5, head 1e-3, 10 % warm-up; also used for the baseline</td><td>backbone_lr, head_lr</td></tr>
+</table>
+<p style="font-size:24px; line-height:1.4; color:#3F4A5A">Each change stops the model from matching copies by surface clues, so it has to learn how the home behaves. With all six off, the code runs the paper's recipe.</p>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 9</p>
+<aside>Change 6 is applied to the from-scratch baseline too, so the comparison stays fair. Why each change is needed is written up in the HomeFM limitations document, L11.</aside>
+</section>

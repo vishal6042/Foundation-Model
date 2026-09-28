@@ -1,0 +1,32 @@
+<section id="setup" data-transition="fade" style="background:#EDF0F4; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">Experimental setup</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Data and protocol</h2>
+</div>
+<div style="display:flex; gap:96px; align-items:start">
+<div style="width:440px; display:flex; flex-direction:column; gap:32px">
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-family:'Source Serif 4', Georgia, serif; font-size:96px; font-weight:600; line-height:1.05; color:#2F6FB0">77</p>
+<p style="font-size:24px; color:#3F4A5A">homes used for pretraining</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-family:'Source Serif 4', Georgia, serif; font-size:96px; font-weight:600; line-height:1.05; color:#2F6FB0">27.3M</p>
+<p style="font-size:24px; color:#3F4A5A">sensor events, unlabelled</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-family:'Source Serif 4', Georgia, serif; font-size:96px; font-weight:600; line-height:1.05; color:#2F6FB0">7</p>
+<p style="font-size:24px; color:#3F4A5A">held-out homes for testing</p>
+</div>
+</div>
+<ul style="flex:1; font-size:28px; line-height:1.5; color:#3F4A5A">
+<li>Pretrain once on 77 homes: every labelled CASAS home except the 7 test homes, plus Milan and Aruba.</li>
+<li>No data from a test home is seen during pretraining.</li>
+<li>Test homes: UCI Home B and CASAS hh101, hh103, hh105, hh110, hh119, hh122.</li>
+<li>Fine-tune on 5 % or 30 % of a test home's labels, for 10 epochs.</li>
+<li>3 time-contiguous folds per home; results are mean ± std.</li>
+<li>Up to 20,000 test windows per fold.</li>
+</ul>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 6</p>
+<aside>No data from any of the 7 test homes is used in pretraining, which is stricter than the paper's leave-one-dataset-out setup.</aside>
+</section>
