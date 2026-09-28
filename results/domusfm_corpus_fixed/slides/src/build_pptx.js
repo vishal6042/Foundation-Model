@@ -47,7 +47,7 @@ function table(s, rows, o) {
   const s = pres.addSlide(); s.background = { color: NAVY };
   txt(s, "EXPERIMENT REPORT · SEPTEMBER 2026", { x: M, y: 2.2, w: CW, h: 0.35, fontSize: 13, bold: true, color: "8FB4E0", charSpacing: 2 });
   txt(s, "DomusFM reproduction", { x: M, y: 2.65, w: CW, h: 1.1, fontFace: HEAD, fontSize: 54, bold: true, color: "F7F6F2" });
-  txt(s, "Setup, parameters, results and limitations of our DomusFM pretraining experiment", { x: M, y: 3.85, w: 10, h: 0.9, fontSize: 22, color: "C9D6E8" });
+  txt(s, "Setup, results and limitations of our DomusFM pretraining experiment, and how HomeFM addresses DomusFM's limitations", { x: M, y: 3.85, w: 10, h: 0.9, fontSize: 22, color: "C9D6E8" });
   footer(s, 1, "77-home pretraining · 7 held-out homes · one RTX 4090", "9FB0C8");
   s.addNotes("Independent reproduction of DomusFM (arXiv 2602.01910), pretrained on 77 homes and tested on 7 homes it never saw. Run finished 25 September 2026.");
 }
@@ -386,7 +386,91 @@ perHome(14, "Next-30 event prediction", [
   s.addNotes("Test sets are also subsampled to at most 20,000 windows per fold. Pretraining timing is not representative: a game shared the GPU for most of the run.");
 }
 
-// 17 · Next steps
+// 17–19 · DomusFM limitations → HomeFM remedies
+function limSlide(n, part, title, rows, extra) {
+  const s = pres.addSlide(); s.background = { color: BG };
+  header(s, `DomusFM limitations → HomeFM remedies · ${part} of 3`, title);
+  const t = [[HDR("Limitation"), HDR("What goes wrong"), HDR("HomeFM remedy"), HDR("Status")]];
+  rows.forEach(r => t.push([C(r[0], { bold: true }), C(r[1]), C(r[2]), C(r[3], { color: MUTED })]));
+  table(s, t, { y: 1.85, w: CW, colW: [2.55, 3.45, 3.7, 2.23], fontSize: 14, rowH: 0.62 });
+  if (extra) extra(s);
+  footer(s, n, "Source: docs/LIMITATIONS_AND_REMEDIES.md");
+  return s;
+}
+limSlide(17, 1, "Limits on what it can answer", [
+  ["L1 · Closed label set", "Can only name activities it was shown examples of", "Link sensor activity to words, so any activity can be described", "Designed; text alignment built"],
+  ["L5 · No start or end", "Cannot count \"cooked 3 times\" or see two things at once", "Several tags at once, start and end detection, counting rules", "Designed"],
+  ["L6 · No anomaly output", "Cannot say \"this is unusual\" or \"this sensor is broken\"", "Surprise score, anomaly and device-health engines", "Surprise score built; engines designed"],
+  ["L7 · No timing", "Knows what comes next, not when", "Predicts each next event with a range of likely times", "Head built; overdue checks designed"],
+  ["L8 · Not searchable", "Its knowledge cannot be searched with a question", "A \"map of meanings\" shared by minutes and sentences", "Designed"],
+]).addNotes("L1 and L8 share one remedy: linking sensor activity to words. L6 and L7 share another: predicting what happens next and when. Built means implemented and tested on small data; designed means specified in DESIGN.md but not yet built.");
+limSlide(18, 2, "Limits on what it can see", [
+  ["L2 · On/off only", "Sees \"fridge ON\", not \"fridge draws 180 W\"", "Keep real numbers as input", "Input built; device health designed"],
+  ["L3 · 30-event window", "Memory is sometimes 2 minutes, sometimes 6 hours, never weeks", "1-minute steps, hours of context, daily summaries", "Minutes built; days designed"],
+  ["L4 · One person assumed", "Cannot tell people apart or count them", "Person cards, identity clues, per-room counts", "Designed"],
+  ["L9 · No sound or camera", "Cannot hear a baby cry or see a parcel", "On-hub sound and camera detectors send short tags", "Designed; event format built"],
+]).addNotes("DomusFM turns every sensor into ON/OFF events and remembers the last 30 events, however long they took. HomeFM keeps real values, reads in 1-minute steps, and adds daily summaries for long-range habits.");
+limSlide(19, 3, "Limits on how it learns", [
+  ["L10 · Small, old data", "Never saw smart locks, cameras or robot vacuums", "Many more homes, a simulator, pilot and donated homes", "84 homes built; rest designed"],
+  ["L11 · Game too easy", "Learns sensor tricks instead of behaviour", "Three harder, more useful practice games", "Games built on small data; corpus run next"],
+], s => {
+  const cw = (CW - 0.3) / 2;
+  card(s, M, 4.4, cw, 1.8, TINT, null);
+  txt(s, "L10 and L11 are linked", { x: M + 0.3, y: 4.6, w: cw - 0.6, h: 0.4, fontSize: 17, bold: true, color: NAVY });
+  txt(s, "More data does not help while the game is too easy. With a harder game, the same 77 homes do help.", { x: M + 0.3, y: 5.05, w: cw - 0.6, h: 1.0, fontSize: 14 });
+  card(s, M + cw + 0.3, 4.4, cw, 1.8, CARD_ON_BG);
+  txt(s, "We tested L11 on DomusFM", { x: M + cw + 0.6, y: 4.6, w: cw - 0.6, h: 0.4, fontSize: 17, bold: true, color: NAVY });
+  txt(s, "The paper's game and a harder game, same model and data. Results on the next slide.", { x: M + cw + 0.6, y: 5.05, w: cw - 0.6, h: 1.0, fontSize: 14 });
+});
+
+// 20 · L11 evidence
+{
+  const s = pres.addSlide(); s.background = { color: BG2 };
+  header(s, "L11 in our own runs · same model, same 77 homes", "An easy game hurts; a harder one helps");
+  const P = { align: "right", color: RUST, bold: true }, H = { align: "right", color: BLUE_D, bold: true };
+  const rows = [
+    [HDR("Measure"), HDR("Paper's game", "right"), HDR("Harder game", "right")],
+    [C("Matching loss, end of training"), C("about 0.0005", P), C("0.70–0.82", H)],
+    [C("Settings where pretraining wins"), C("6 of 28", P), C("26 of 28", H)],
+    [C("ADL gain · 5 % / 30 % labels"), C("−0.050 / −0.068", P), C("+0.076 / +0.059", H)],
+    [C("Next-30 gain · 5 % / 30 % labels"), C("−0.009 / +0.002", P), C("+0.053 / +0.030", H)],
+  ];
+  table(s, rows, { y: 1.85, w: CW, colW: [5.53, 3.2, 3.2], fontSize: 16, fill: { color: "FFFFFF" }, rowH: 0.5 });
+  txt(s, [
+    { text: "Tricks the paper's game allowed: ", options: { bold: true, color: NAVY } },
+    { text: "candidates from other homes, exact-second timestamps, one copy never hidden, no separate head for the game, nothing to predict.", options: { breakLine: true, paraSpaceAfter: 10 } },
+    { text: "Remedies: ", options: { bold: true, color: NAVY } },
+    { text: "the six changes on slide 9. The from-scratch baseline barely moved, so the gain comes from the harder game." },
+  ], { x: M, y: 4.65, w: CW, h: 1.6, fontSize: 15 });
+  footer(s, 20, "Gain = pretrained F1 − from-scratch F1, mean over 7 held-out homes · Red = paper's game, blue = harder game");
+  s.addNotes("Paper's game run finished 24 September 2026; harder game run finished 25 September 2026. With the paper's game, pretraining was worse than training from scratch on 6 of 7 homes for activity recognition. Settings where pretraining wins, paper's game: ADL 1 + 1, Next-30 1 + 3 = 6 of 28.");
+}
+
+// 21 · HomeFM games
+{
+  const s = pres.addSlide(); s.background = { color: BG2 };
+  header(s, "HomeFM's remedy for L11", "Three harder practice games");
+  const games = [
+    ["What happens next, and when?", "Predict the next event and the time until it. The future is unseen, so the model must learn routines. Also gives the surprise score (L6) and timing (L7)."],
+    ["Hide a big chunk, guess its meaning", "Hide 10 minutes, a room or a device type, and predict what it meant. No ON/OFF partner or timestamp is left to copy."],
+    ["Match minutes with sentences", "Pair minutes with descriptions, allowing many right answers, so two nights of sleep end up together (L1, L8)."],
+  ];
+  const cw = (CW - 0.6) / 3;
+  games.forEach(([t, d], i) => {
+    const x = M + i * (cw + 0.3);
+    card(s, x, 1.9, cw, 3.45, CARD_ON_BG2);
+    numCircle(s, x + 0.3, 2.15, i + 1);
+    txt(s, `GAME ${i + 1}`, { x: x + 0.85, y: 2.21, w: cw - 1.1, h: 0.3, fontSize: 12, bold: true, color: BLUE_D, charSpacing: 2 });
+    txt(s, t, { x: x + 0.3, y: 2.75, w: cw - 0.6, h: 0.75, fontSize: 17, bold: true, color: NAVY });
+    txt(s, d, { x: x + 0.3, y: 3.55, w: cw - 0.6, h: 1.5, fontSize: 14, lineSpacingMultiple: 1.1 });
+  });
+  card(s, M, 5.6, CW, 0.95, TINT, null);
+  txt(s, "Built and tested on small data. Next: HomeFM against the fixed DomusFM on the same 77 homes. The DomusFM \"fill in the blanks\" change is a small version of game 2.", { x: M + 0.3, y: 5.675, w: CW - 0.6, h: 0.8, fontSize: 15, color: NAVY, valign: "middle" });
+  footer(s, 21, "Details: docs/LIMITATIONS_AND_REMEDIES.md (L11), docs/DESIGN.md §8");
+  s.addNotes("Also carried over from the DomusFM fix into HomeFM training: batches drawn from a few homes at a time, gentler fine-tuning, and loss health checks. HomeFM must now beat the fixed DomusFM: mean activity F1 0.517 / 0.529 and Next-30 F1 0.649 / 0.613 at 5 % / 30 % labels.");
+}
+
+// 22 · Next steps
 {
   const s = pres.addSlide(); s.background = { color: BG };
   header(s, "Next steps", "What comes next");
@@ -404,10 +488,10 @@ perHome(14, "Next-30 event prediction", [
     txt(s, t, { x: x + 0.3, y: 2.9, w: cw - 0.6, h: 0.75, fontSize: 18, bold: true, color: NAVY });
     txt(s, d, { x: x + 0.3, y: 3.75, w: cw - 0.6, h: 1.5, fontSize: 15, lineSpacingMultiple: 1.12 });
   });
-  footer(s, 17, "Configs: homefm_corpus.yaml (8.0M), homefm_corpus_384.yaml (28.6M)");
+  footer(s, 22, "Configs: homefm_corpus.yaml (8.0M), homefm_corpus_384.yaml (28.6M)");
 }
 
-// 18 · Takeaways
+// 23 · Takeaways
 {
   const s = pres.addSlide(); s.background = { color: NAVY };
   txt(s, "TAKEAWAYS", { x: M, y: 0.5, w: CW, h: 0.3, fontSize: 12, bold: true, color: "8FB4E0", charSpacing: 2 });
@@ -415,13 +499,13 @@ perHome(14, "Next-30 event prediction", [
   [
     "Pretrained on 77 homes, DomusFM beats training from scratch in 26 of 28 settings.",
     "The gain is largest when labels are scarce: +0.076 activity F1 with 5 % labels.",
-    "The gain is modest outside UCI B. Ablations and the HomeFM comparison come next.",
+    "HomeFM targets DomusFM's 11 limitations; its first test is to beat this fixed DomusFM.",
   ].forEach((t, i) => {
     const y = 2.2 + i * 1.35;
     numCircle(s, M, y, i + 1, "8FB4E0", NAVY, 0.6);
     txt(s, t, { x: M + 0.9, y: y - 0.05, w: 10.8, h: 0.8, fontSize: 22, color: "E6ECF5", valign: "middle" });
   });
-  footer(s, 18, "Full results: results/domusfm_corpus_fixed/", "9FB0C8");
+  footer(s, 23, "Full results: results/domusfm_corpus_fixed/", "9FB0C8");
 }
 
 pres.writeFile({ fileName: out }).then(f => console.log("wrote", f));

@@ -29,7 +29,7 @@
 <section id="cover" data-transition="fade" style="background:#14213D; color:#F7F6F2; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; justify-content:center; gap:40px">
 <p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#8FB4E0">Experiment report · September 2026</p>
 <h1 style="font-family:'Source Serif 4', Georgia, serif; font-size:120px; font-weight:600; line-height:1.05">DomusFM reproduction</h1>
-<p style="font-size:44px; line-height:1.3; color:#C9D6E8; width:1400px">Setup, parameters, results and limitations of our DomusFM pretraining experiment</p>
+<p style="font-size:44px; line-height:1.3; color:#C9D6E8; width:1400px">Setup, results and limitations of our DomusFM pretraining experiment, and how HomeFM addresses DomusFM's limitations</p>
 <p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#9FB0C8">77-home pretraining · 7 held-out homes · one RTX 4090</p>
 <aside>Independent reproduction of DomusFM (arXiv 2602.01910), pretrained on 77 homes and tested on 7 homes it never saw. Run finished 25 September 2026.</aside>
 </section>
@@ -442,6 +442,114 @@
 </section>
 </div>
 <div class="frame" data-n="17">
+<section id="lr1" data-transition="fade" style="background:#F7F6F2; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">DomusFM limitations → HomeFM remedies · 1 of 3</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Limits on what it can answer</h2>
+</div>
+<table style="font-size:24px; color:#14213D">
+<tr style="background:#DDE3EC"><th style="width:21%">Limitation</th><th style="width:29%">What goes wrong</th><th style="width:31%">HomeFM remedy</th><th style="width:19%">Status</th></tr>
+<tr><td>L1 · Closed label set</td><td>Can only name activities it was shown examples of</td><td>Link sensor activity to words, so any activity can be described</td><td>Designed; text alignment built</td></tr>
+<tr><td>L5 · No start or end</td><td>Cannot count "cooked 3 times" or see two things at once</td><td>Several tags at once, start and end detection, counting rules</td><td>Designed</td></tr>
+<tr><td>L6 · No anomaly output</td><td>Cannot say "this is unusual" or "this sensor is broken"</td><td>Surprise score, anomaly and device-health engines</td><td>Surprise score built; engines designed</td></tr>
+<tr><td>L7 · No timing</td><td>Knows what comes next, not when</td><td>Predicts each next event with a range of likely times</td><td>Head built; overdue checks designed</td></tr>
+<tr><td>L8 · Not searchable</td><td>Its knowledge cannot be searched with a question</td><td>A "map of meanings" shared by minutes and sentences</td><td>Designed</td></tr>
+</table>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 17 · Source: docs/LIMITATIONS_AND_REMEDIES.md</p>
+<aside>L1 and L8 share one remedy: linking sensor activity to words. L6 and L7 share another: predicting what happens next and when. Built means implemented and tested on small data; designed means specified in DESIGN.md but not yet built.</aside>
+</section>
+</div>
+<div class="frame" data-n="18">
+<section id="lr2" data-transition="fade" style="background:#F7F6F2; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">DomusFM limitations → HomeFM remedies · 2 of 3</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Limits on what it can see</h2>
+</div>
+<table style="font-size:24px; color:#14213D">
+<tr style="background:#DDE3EC"><th style="width:21%">Limitation</th><th style="width:29%">What goes wrong</th><th style="width:31%">HomeFM remedy</th><th style="width:19%">Status</th></tr>
+<tr><td>L2 · On/off only</td><td>Sees "fridge ON", not "fridge draws 180 W"</td><td>Keep real numbers as input</td><td>Input built; device health designed</td></tr>
+<tr><td>L3 · 30-event window</td><td>Memory is sometimes 2 minutes, sometimes 6 hours, never weeks</td><td>1-minute steps, hours of context, daily summaries</td><td>Minutes built; days designed</td></tr>
+<tr><td>L4 · One person assumed</td><td>Cannot tell people apart or count them</td><td>Person cards, identity clues, per-room counts</td><td>Designed</td></tr>
+<tr><td>L9 · No sound or camera</td><td>Cannot hear a baby cry or see a parcel</td><td>On-hub sound and camera detectors send short tags</td><td>Designed; event format built</td></tr>
+</table>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 18 · Source: docs/LIMITATIONS_AND_REMEDIES.md</p>
+<aside>DomusFM turns every sensor into ON/OFF events and remembers the last 30 events, however long they took. HomeFM keeps real values, reads in 1-minute steps, and adds daily summaries for long-range habits.</aside>
+</section>
+</div>
+<div class="frame" data-n="19">
+<section id="lr3" data-transition="fade" style="background:#F7F6F2; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">DomusFM limitations → HomeFM remedies · 3 of 3</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Limits on how it learns</h2>
+</div>
+<table style="font-size:24px; color:#14213D">
+<tr style="background:#DDE3EC"><th style="width:21%">Limitation</th><th style="width:29%">What goes wrong</th><th style="width:31%">HomeFM remedy</th><th style="width:19%">Status</th></tr>
+<tr><td>L10 · Small, old data</td><td>Never saw smart locks, cameras or robot vacuums</td><td>Many more homes, a simulator, pilot and donated homes</td><td>84 homes built; rest designed</td></tr>
+<tr><td>L11 · Game too easy</td><td>Learns sensor tricks instead of behaviour</td><td>Three harder, more useful practice games</td><td>Games built on small data; corpus run next</td></tr>
+</table>
+<div style="display:flex; gap:32px">
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#E3ECF7; border-radius:16px; padding:32px">
+<h3 style="font-size:32px; font-weight:600; line-height:1.2">L10 and L11 are linked</h3>
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A">More data does not help while the game is too easy. With a harder game, the same 77 homes do help.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:32px">
+<h3 style="font-size:32px; font-weight:600; line-height:1.2">We tested L11 on DomusFM</h3>
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A">The paper's game and a harder game, same model and data. Results on the next slide.</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 19 · Source: docs/LIMITATIONS_AND_REMEDIES.md</p>
+</section>
+</div>
+<div class="frame" data-n="20">
+<section id="l11" data-transition="fade" style="background:#EDF0F4; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">L11 in our own runs · same model, same 77 homes</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">An easy game hurts; a harder one helps</h2>
+</div>
+<table style="font-size:26px; color:#14213D">
+<tr style="background:#DDE3EC"><th style="width:44%">Measure</th><th style="width:28%; text-align:right">Paper's game</th><th style="width:28%; text-align:right">Harder game</th></tr>
+<tr><td>Matching loss, end of training</td><td style="text-align:right; color:#A4520F">about 0.0005</td><td style="text-align:right; color:#1F5A96">0.70–0.82</td></tr>
+<tr><td>Settings where pretraining wins</td><td style="text-align:right; color:#A4520F">6 of 28</td><td style="text-align:right; color:#1F5A96">26 of 28</td></tr>
+<tr><td>ADL gain · 5 % / 30 % labels</td><td style="text-align:right; color:#A4520F">−0.050 / −0.068</td><td style="text-align:right; color:#1F5A96">+0.076 / +0.059</td></tr>
+<tr><td>Next-30 gain · 5 % / 30 % labels</td><td style="text-align:right; color:#A4520F">−0.009 / +0.002</td><td style="text-align:right; color:#1F5A96">+0.053 / +0.030</td></tr>
+</table>
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A"><b>Tricks the paper's game allowed:</b> candidates from other homes, exact-second timestamps, one copy never hidden, no separate head for the game, nothing to predict.</p>
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A"><b>Remedies:</b> the six changes on slide 9. The from-scratch baseline barely moved, so the gain comes from the harder game.</p>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 20 · Gain = pretrained F1 − from-scratch F1, mean over 7 held-out homes</p>
+<aside>Paper's game run finished 24 September 2026; harder game run finished 25 September 2026. With the paper's game, pretraining was worse than training from scratch on 6 of 7 homes for activity recognition. Settings where pretraining wins, paper's game: ADL 1 + 1, Next-30 1 + 3 = 6 of 28.</aside>
+</section>
+</div>
+<div class="frame" data-n="21">
+<section id="games" data-transition="fade" style="background:#EDF0F4; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">HomeFM's remedy for L11</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Three harder practice games</h2>
+</div>
+<div style="display:flex; gap:32px; align-items:stretch">
+<div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:36px">
+<p style="font-size:24px; font-weight:600; color:#2F6FB0">Game 1</p>
+<h3 style="font-size:30px; font-weight:600; line-height:1.2">What happens next, and when?</h3>
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A">Predict the next event and the time until it. The future is unseen, so the model must learn routines. Also gives the surprise score (L6) and timing (L7).</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:36px">
+<p style="font-size:24px; font-weight:600; color:#2F6FB0">Game 2</p>
+<h3 style="font-size:30px; font-weight:600; line-height:1.2">Hide a big chunk, guess its meaning</h3>
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A">Hide 10 minutes, a room or a device type, and predict what it meant. No ON/OFF partner or timestamp is left to copy.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:36px">
+<p style="font-size:24px; font-weight:600; color:#2F6FB0">Game 3</p>
+<h3 style="font-size:30px; font-weight:600; line-height:1.2">Match minutes with sentences</h3>
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A">Pair minutes with descriptions, allowing many right answers, so two nights of sleep end up together (L1, L8).</p>
+</div>
+</div>
+<p style="font-size:26px; line-height:1.4; color:#14213D; background:#E3ECF7; border-radius:12px; padding:24px 32px">Built and tested on small data. Next: HomeFM against the fixed DomusFM on the same 77 homes. The DomusFM "fill in the blanks" change is a small version of game 2.</p>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 21 · Details: docs/LIMITATIONS_AND_REMEDIES.md (L11), docs/DESIGN.md §8</p>
+<aside>Also carried over from the DomusFM fix into HomeFM training: batches drawn from a few homes at a time, gentler fine-tuning, and loss health checks. HomeFM must now beat the fixed DomusFM: mean activity F1 0.517 / 0.529 and Next-30 F1 0.649 / 0.613 at 5 % / 30 % labels.</aside>
+</section>
+</div>
+<div class="frame" data-n="22">
 <section id="nextsteps" data-transition="fade" style="background:#F7F6F2; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
 <div style="display:flex; flex-direction:column; gap:12px">
 <p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">Next steps</p>
@@ -464,10 +572,10 @@
 <p style="font-size:28px; line-height:1.4; color:#3F4A5A">Repeat runs with new seeds, look into the flat z_std, and add the paper's missing tasks and baselines.</p>
 </div>
 </div>
-<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 17 · Configs: homefm_corpus.yaml (8.0M), homefm_corpus_384.yaml (28.6M)</p>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 22 · Configs: homefm_corpus.yaml (8.0M), homefm_corpus_384.yaml (28.6M)</p>
 </section>
 </div>
-<div class="frame" data-n="18">
+<div class="frame" data-n="23">
 <section id="close" data-transition="fade" style="background:#14213D; color:#F7F6F2; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
 <div style="display:flex; flex-direction:column; gap:12px">
 <p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#8FB4E0">Takeaways</p>
@@ -484,10 +592,10 @@
 </div>
 <div style="display:flex; gap:40px; align-items:start">
 <p style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1; color:#8FB4E0; width:64px">3</p>
-<p style="font-size:40px; line-height:1.3; color:#E6ECF5; width:1500px">The gain is modest outside UCI B. Ablations and the HomeFM comparison come next.</p>
+<p style="font-size:40px; line-height:1.3; color:#E6ECF5; width:1500px">HomeFM targets DomusFM's 11 limitations; its first test is to beat this fixed DomusFM.</p>
 </div>
 </div>
-<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#9FB0C8">DomusFM reproduction · 18 · Full results: results/domusfm_corpus_fixed/</p>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#9FB0C8">DomusFM reproduction · 23 · Full results: results/domusfm_corpus_fixed/</p>
 </section>
 </div>
 </div>

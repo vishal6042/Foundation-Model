@@ -1,0 +1,19 @@
+<section id="l11" data-transition="fade" style="background:#EDF0F4; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">L11 in our own runs · same model, same 77 homes</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">An easy game hurts; a harder one helps</h2>
+</div>
+<table style="font-size:26px; color:#14213D">
+<tr style="background:#DDE3EC"><th style="width:44%">Measure</th><th style="width:28%; text-align:right">Paper's game</th><th style="width:28%; text-align:right">Harder game</th></tr>
+<tr><td>Matching loss, end of training</td><td style="text-align:right; color:#A4520F">about 0.0005</td><td style="text-align:right; color:#1F5A96">0.70–0.82</td></tr>
+<tr><td>Settings where pretraining wins</td><td style="text-align:right; color:#A4520F">6 of 28</td><td style="text-align:right; color:#1F5A96">26 of 28</td></tr>
+<tr><td>ADL gain · 5 % / 30 % labels</td><td style="text-align:right; color:#A4520F">−0.050 / −0.068</td><td style="text-align:right; color:#1F5A96">+0.076 / +0.059</td></tr>
+<tr><td>Next-30 gain · 5 % / 30 % labels</td><td style="text-align:right; color:#A4520F">−0.009 / +0.002</td><td style="text-align:right; color:#1F5A96">+0.053 / +0.030</td></tr>
+</table>
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A"><b>Tricks the paper's game allowed:</b> candidates from other homes, exact-second timestamps, one copy never hidden, no separate head for the game, nothing to predict.</p>
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A"><b>Remedies:</b> the six changes on slide 9. The from-scratch baseline barely moved, so the gain comes from the harder game.</p>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 20 · Gain = pretrained F1 − from-scratch F1, mean over 7 held-out homes</p>
+<aside>Paper's game run finished 24 September 2026; harder game run finished 25 September 2026. With the paper's game, pretraining was worse than training from scratch on 6 of 7 homes for activity recognition. Settings where pretraining wins, paper's game: ADL 1 + 1, Next-30 1 + 3 = 6 of 28.</aside>
+</section>
