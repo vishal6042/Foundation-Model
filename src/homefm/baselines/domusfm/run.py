@@ -22,9 +22,12 @@ from homefm.data import build_text_encoder, simulate_homes
 from homefm.data.converters.casas import load_casas
 from homefm.data.converters.casas_fast import load_casas_fast
 from homefm.data.converters.casas_zenodo import load_casas_zenodo
+from homefm.data.converters.kasteren import load_kasteren
+from homefm.data.converters.mural import load_mural
 from homefm.data.converters.uci_adl import load_uci_adl
 from homefm.train.pretrain import ROOT, load_config, resolve_device
 
+from .clean import clean_dataset
 from .data import DomusWindows, TextTable, build_domus_dataset, build_domus_from_arrays
 from .model import DomusConfig, DomusFM
 from .train import finetune_and_eval, fresh_copy, pretrain, pretrain_loader
@@ -45,6 +48,10 @@ def load_datasets(cfg: dict):
                 stream = load_casas_zenodo(path, spec.get("id"))
             elif kind == "uci_adl":
                 stream = load_uci_adl(path, spec.get("home", "B"))
+            elif kind == "kasteren":
+                stream = load_kasteren(path, spec.get("home", "A"))
+            elif kind == "mural":
+                stream = load_mural(path)
             elif kind == "casas":
                 stream = load_casas(path, ROOT / spec["sensor_map"], spec["id"], spec.get("label_map"))
             elif kind in ("casas_fast", "casas_fast_glob"):
@@ -64,6 +71,17 @@ def load_datasets(cfg: dict):
             out.append(build_domus_dataset(spec.get("id", stream.home_id), [stream]))
             if spec.get("pretrain_only"):
                 pretrain_only.add(out[-1].name)
+        if cfg["datasets"].get("clean"):  # paper Appendix A + EDA fixes (clean.py); off = earlier runs unchanged
+            opts = cfg["datasets"]["clean"] if isinstance(cfg["datasets"]["clean"], dict) else {}
+            opts = {**opts, "drop_types": tuple(opts.get("drop_types", ("scalar",)))}
+            cleaned = [clean_dataset(d, **opts) for d in out]
+            out = [d for d, _ in cleaned]
+            report = {d.name: r for d, r in cleaned}
+            n_in, n_out = sum(r["events_in"] for r in report.values()), sum(r["events_out"] for r in report.values())
+            print(f"[domusfm] cleaning: {n_in:,} -> {n_out:,} events ({1 - n_out / max(n_in, 1):.1%} removed)", flush=True)
+            out_dir = ROOT / cfg["out_dir"]
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / "cleaning_report.json").write_text(json.dumps(report, indent=1))
         return out, pretrain_only
     raise ValueError(src)
 
@@ -106,16 +124,28 @@ def main():
         done = sum(len(r["results"]) for r in results.values())
         print(f"[domusfm] resuming: {done} results already in {results_path.name}", flush=True)
     targets = [d for d in datasets if d.name in held_out]
-    shared = cfg.get("pretrain_mode", "per_target") == "shared"
+    mode = cfg.get("pretrain_mode", "per_target")
     shared_state, shared_hist = None, []
-    if shared:  # one pretraining run on every dataset that is not a target (stricter than leave-one-out)
+    if mode == "shared":  # one pretraining run on every dataset that is not a target (stricter than leave-one-out)
         shared_state, shared_hist = get_pretrained(cfg, ctor, text, [d for d in datasets if d.name not in held_out],
                                                    out_dir / "pretrained_shared.pt", device)
+    # groups ({name: [targets]}): targets in one group share a pretraining run on every dataset outside the group,
+    # except datasets in never_pretrain. Leave-one-dataset-out (§6.1) with one run per group, not one per target.
+    groups = {t: (n, tuple(g)) for n, g in cfg.get("pretrain_groups", {}).items() for t in g}
+    group_cache: dict = {}
     for target in targets:
         t0 = time.time()
         print(f"\n=== held-out: {target.name} ===", flush=True)
-        if shared:
+        if mode == "shared":
             state, history = shared_state, shared_hist
+        elif mode == "groups":
+            name, g = groups.get(target.name, (target.name, (target.name,)))
+            if name not in group_cache:
+                never = set(cfg.get("never_pretrain", []))
+                pool = [d for d in datasets if d.name not in g and d.name not in never]
+                print(f"[domusfm] pretraining group '{name}': excludes {', '.join(g)}", flush=True)
+                group_cache[name] = get_pretrained(cfg, ctor, text, pool, out_dir / f"pretrained_{name}.pt", device)
+            state, history = group_cache[name]
         else:
             others = [d for d in datasets if d is not target]
             state, history = get_pretrained(cfg, ctor, text, others, out_dir / f"pretrained_{target.name}.pt", device)

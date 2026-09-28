@@ -55,7 +55,7 @@ Code: `src/homefm/baselines/domusfm/` · Config: `configs/domusfm.yaml`
 - Unsupervised clustering task (HDBSCAN + purity, §6.6) — needs scikit-learn.
 - Baselines DeepCASAS (BiLSTM), GPT-2 event model, Chronos (§6.3).
 - "w/o Context" ablation (§6.7.1).
-- Converters for Kasteren, UCI, Orange4Home, MuRAL (only CASAS and synthetic exist).
+- Converter for Orange4Home (dataset available only by email request). Kasteren A/C (`kasteren.py`), UCI (`uci_adl.py`) and MuRAL (`mural.py`) exist.
 
 ## Datasets
 
@@ -63,8 +63,8 @@ Code: `src/homefm/baselines/domusfm/` · Config: `configs/domusfm.yaml`
 |---|---|---|---|
 | CASAS Milan, Aruba | Zenodo record 15708568, `data.zip` (2.7 GB; only `milan.csv`, `aruba.csv` extracted via HTTP range requests) | CC BY 4.0 | ✅ downloaded — **but see below** |
 | UCI ADL Binary, Home B | UCI ML Repository, dataset 271 (32 KB) | Direct | ✅ downloaded, `uci_adl.py` |
-| Kasteren A, C | Tim van Kasteren's dataset page (Matlab files) | Direct | ⬜ not downloaded |
-| MuRAL | mural.imag.fr | Check terms | ⬜ not downloaded |
+| Kasteren A, C | Original page (`tlDatasets.zip`) now redirects to a Google sign-in. Copies in the original interval format: House A from GitHub du-phan/Human-Activity-Recognition, House C from aitoralmeida/c4a_activity_recognition | No licence stated | ✅ downloaded 2026-09-28, `kasteren.py` (see [DATA.md](DATA.md) §2.5) |
+| MuRAL | mural.imag.fr, `MuRAL.zip` (0.86 MB) | Direct; cite Chen et al. | ✅ downloaded 2026-09-28, `mural.py` |
 | Orange4Home | Orange Labs | **By email request** | ⬜ not requested |
 | *(substitute)* CASAS labelled homes hh101–hh130, … | Zenodo record 15708568, `labeled_data.zip` (236 MB, 83 homes) | CC BY 4.0 | ✅ downloaded, `casas_zenodo.py` |
 
@@ -182,6 +182,20 @@ The loss not collapsing is necessary but not sufficient. Success means pretraine
 #### Result: DomusFM with the fixes, 77-home pretraining (finished 2026-09-25)
 
 The fixes work. The contrastive loss stayed at 0.70–0.82 for all 40,000 steps, and pretrained now beats w/o pretrain in 26 of 28 settings. Mean difference over the 7 targets (pretrained − w/o PT): ADL 5 % **+0.076** (was −0.050), ADL 30 % **+0.059** (was −0.068), Next-30 5 % **+0.053** (was −0.009), Next-30 30 % **+0.030** (was +0.002). The w/o-pretrain baseline barely moved (ADL 5 % 0.441 vs 0.435), so the gain comes from pretraining. Full tables, per-fold spread and timings: [results/domusfm_corpus_fixed/results.md](../results/domusfm_corpus_fixed/results.md).
+
+### Real datasets: run 3 (cleaned data, the paper's own test datasets, leave-one-dataset-out; started 2026-09-28)
+
+Config `configs/domusfm_corpus_clean.yaml`; EDA and cleaning evidence in [notebooks/domusfm_eda.ipynb](../notebooks/domusfm_eda.ipynb) and [DATA.md](DATA.md) §3.6. Three changes from run 2, each checked against the paper; everything else (model, pretraining game and length, fine-tuning protocol) is unchanged so the 7 earlier targets compare directly:
+
+| # | Change | Paper basis |
+|---|---|---|
+| 1 | **Cleaning before segmentation** (`datasets.clean`): drop repeated ON/ON or OFF/OFF states per sensor, drop the undocumented numeric codes, merge case-duplicate sensor names. 10.1 % of events removed | Appendix A: a binary sensor's events must alternate; repeated states are duplicate events "safely removed during the data cleaning process prior to segmentation". Not done in runs 1–2 |
+| 2 | **Kasteren A, Kasteren C and MuRAL added as targets** (10 targets) | §5: three of the paper's seven datasets. Orange4Home still missing (email request) |
+| 3 | **Leave-one-dataset-out pretraining** (`pretrain_mode: groups`): 5 pretraining runs. Each paper target is pretrained on the 77 CASAS homes plus the other paper datasets; the 6 CASAS test homes share one run on the 77 CASAS homes plus all 4 paper datasets and are never pretrained on | §6.1: "six datasets were used exclusively for pretraining, while the seventh … held out". Run 2 pretrained on CASAS only, so the item-level sensor homes had nothing like themselves in pretraining; the paper also warns more CASAS data "could bias our models toward CASAS-specific characteristics" (§5.1.1) |
+
+Checked and kept as in run 2: tasks ADL and next-30 (the two tasks of the paper's pretraining ablation, Tables 8–9), 5 % and 30 % labels, 10 epochs without early stopping (§6.1.3), labelled subset sampled at random from the training folds (§6.1.3), "Other" kept (§6.1.1), per-dataset oversampling in pretraining (§6.1.2), 30-event windows with stride 1 (§6.2.2). Time-contiguous folds stay (3 instead of the paper's 5, for time), so absolute scores remain stricter than the paper's.
+
+Next-30 after cleaning is a slightly different target (repeated states no longer count), so run 3 next-30 scores are not strictly comparable with run 2's; ADL labels are unchanged by cleaning.
 
 Next, on request: the strong-masking DomusFM run, and HomeFM variant E at 8.0M (`configs/homefm_corpus.yaml`) and size-matched at 28.6M (`configs/homefm_corpus_384.yaml`).
 

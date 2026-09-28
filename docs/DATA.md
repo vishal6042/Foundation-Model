@@ -2,7 +2,7 @@
 
 What data the DomusFM reproduction (and later HomeFM) is trained and tested on, how it is structured on disk, and how it is turned into model input. §1–3 describe the DomusFM reproduction exactly as it runs; §4 is HomeFM only. For results see [DOMUSFM_REPRODUCTION.md](DOMUSFM_REPRODUCTION.md); for the long-term data plan see [DESIGN.md](DESIGN.md) §11.
 
-## 1. The four data groups at a glance
+## 1. The data groups at a glance
 
 All real data comes from two public sources: the **CASAS 2025 release** on Zenodo (record 15708568, CC BY 4.0) and the **UCI ADL Binary dataset** (UCI ML Repository, dataset 271). The split is set in `configs/domusfm_corpus.yaml` (`held_out`, `pretrain_only`). Counts below come from the run log (`results/domusfm_corpus/train.log`, line 5) and are events **after** DomusFM's ON/OFF conversion.
 
@@ -12,7 +12,10 @@ All real data comes from two public sources: the **CASAS 2025 release** on Zenod
 | **B. CASAS Milan and Aruba** | 2 | Pretraining only | No | CASAS CSV, 4 columns (§2.2) | 2,024,213 |
 | **C. CASAS test homes** | 6 | Fine-tuning and testing | Yes | CASAS CSV, 5 columns (§2.1) | 803,768 |
 | **D. UCI ADL Home B** | 1 | Fine-tuning and testing | Yes | Two tab-separated text files (§2.3) | 4,668 |
+| **E. Paper test datasets** (added 2026-09-28) | 3: Kasteren A, Kasteren C, MuRAL | Fine-tuning and testing; pretraining of the other targets (§2.5) | Yes | Kasteren: TXT/CSV intervals; MuRAL: one CSV per session (§2.5) | 56,579 |
 | **Pretraining total (A + B)** | **77** | | | | **27,255,501** |
+
+From iteration 3 (`configs/domusfm_corpus_clean.yaml`) the data is **cleaned** before segmentation (§3.6), and pretraining is leave-one-dataset-out as in the paper: each paper test dataset (D, E) is pretrained on groups A + B plus the other paper test datasets. The full exploratory analysis is in [notebooks/domusfm_eda.ipynb](../notebooks/domusfm_eda.ipynb).
 
 Groups A and C have the **same file format**; they differ only in which homes are held out. No test-home data is ever seen in pretraining.
 
@@ -23,6 +26,8 @@ Where the files go (git-ignored):
 | A, C | `data/raw/casas/labeled/<home>.csv` (from `labeled_data.zip`, 236 MB) | `casas_fast.py` (fast, cached as `.npz` in `data/cache/casas/`); reference: `casas_zenodo.py` |
 | B | `data/raw/casas/data/milan.csv`, `aruba.csv` (from `data.zip`) | same |
 | D | `data/raw/uci/UCI ADL Binary Dataset/OrdonezB_Sensors.txt`, `OrdonezB_ADLs.txt` | `uci_adl.py` |
+| E | `data/raw/kasteren/A/sensorData.txt`, `activitiesData.txt`; `data/raw/kasteren/C/sensors.csv`, `activities.csv`, `sensor_labels.txt`, `activity_labels.txt` | `kasteren.py` |
+| E | `data/raw/mural/MuRAL/NN/data.csv`, `context.json` (21 sessions), `sensors.json`, `activities.json` | `mural.py` |
 
 ### Download links
 
@@ -32,9 +37,14 @@ Where the files go (git-ignored):
 | A, C | `labeled_data.zip` (236 MB, one CSV per labelled home) | https://zenodo.org/records/15708568/files/labeled_data.zip?download=1 |
 | B | `data.zip` (2.7 GB; only `milan.csv` and `aruba.csv` are used) | https://zenodo.org/records/15708568/files/data.zip?download=1 |
 | D | UCI ADL Binary dataset (id 271) | https://archive.ics.uci.edu/dataset/271/activities+of+daily+living+adls+recognition+using+binary+sensors |
+| E | MuRAL (`MuRAL.zip`, 0.86 MB, official) | https://mural.imag.fr/ |
+| E | Kasteren A (original interval format; unofficial copy, no licence stated) | https://github.com/du-phan/Human-Activity-Recognition (`sensorData.txt`, `activitiesData.txt`) |
+| E | Kasteren C (original interval format + label files; unofficial copy, no licence stated) | https://github.com/aitoralmeida/c4a_activity_recognition/tree/master/experiments/kasterenC_dataset |
+| — | Orange4Home (not used: by email request to Orange Labs) | https://amiqual4home.inria.fr/en/orange4home/ |
 
 - Unzip `labeled_data.zip` into `data/raw/casas/labeled/`, and put `milan.csv` and `aruba.csv` in `data/raw/casas/data/`.
-- **Not in the DomusFM paper:** all 75 group-A homes and the 6 group-C homes. The paper's 7 datasets were the older annotated Milan and Aruba, UCI Home B, Kasteren A and C, Orange4Home and MuRAL. Of those, only UCI Home B is used here as a test home. Milan and Aruba are used unlabelled, for pretraining only.
+- **Not in the DomusFM paper:** all 75 group-A homes and the 6 group-C homes. The paper's 7 datasets were the older annotated Milan and Aruba, UCI Home B, Kasteren A and C, Orange4Home and MuRAL. Of those, UCI Home B, Kasteren A and C and MuRAL are used here as test homes (Kasteren and MuRAL from iteration 3). Milan and Aruba are used unlabelled, for pretraining only. The paper deliberately used only two CASAS homes, because "including additional CASAS datasets would create a severely unbalanced evaluation" (§5.1.1); here each home is sampled equally often in pretraining, so the 77 CASAS homes still make up about 95 % of pretraining batches.
+- The Kasteren original download (`sites.google.com/site/tim0306/tlDatasets.zip`) now redirects to a Google sign-in and was never archived. House A's numeric sensor and activity ids were named by matching every event's start time against the c4a copy (`base_kasteren.csv`); the names match the published House A list exactly. House B is not used, as in the paper.
 - The zip holds 83 homes according to the download notes in [DOMUSFM_REPRODUCTION.md](DOMUSFM_REPRODUCTION.md), but the run loaded 81 (75 + 6). The per-home list in §2.1 is the authoritative set, taken from the run log.
 
 ## 2. Raw data formats, group by group
@@ -65,9 +75,12 @@ date,       time,             sensor,              message, label (optional)
 
 **What each home looks like:**
 
-- 5–13 distinct sensor names (room-level; the original per-sensor ids such as M001 were merged in the 2025 release).
-- Motion, door and temperature sensors only. No power, audio or camera.
-- One resident is assumed; no column says who caused an event.
+- 5–36 distinct sensor names (room-level; the original per-sensor ids such as M001 were merged in the 2025 release). The hh family keeps only 5–8 names: the hh101 floorplan in `floorplans.zip` shows about 40 physical sensors (motion M001–M012, area motion MA013–MA016, light LS001–LS016, doors D001–D003, temperature T101–T105), merged into 6 names. Newer families (tm, mn, ihs, rw) keep more detail.
+- Motion (about 99 % of events), door and temperature sensors only. No power, water, light, audio or camera.
+- **Undocumented numbers on motion-sensor names** (e.g. `BedroomABed,67`, `KitchenArea,01`): 308,694 rows, up to 38 % of a home (rw101). The loader treats them as a scalar sensor and invents ON/OFF events from them; cleaning drops them (§3.6).
+- One resident is assumed; no column says who caused an event. Exception: hh121 has labels like `r1.Sleep`, `r2.Dress` (two residents).
+- Raw-file faults (all CASAS files): 324 malformed readings (`OF`, `ONf`, `OFFEat`, and about 300 hex-like values such as `0ta082` in rw110), 22 rows out of time order, 937 activity labels with a begin and no end or the reverse, 84 recording outages over one day, and 6 sensor names in tm004 that differ only in letter case (`DiningroomAArea` / `DiningRoomAArea`).
+- Recorded 2009–2023 (Milan 2009 to the tm family 2023).
 
 **Group A: the 75 pretraining homes**, by CASAS home family (activity classes include "Other"):
 
@@ -96,7 +109,7 @@ Homes vary a lot in size: from 13,374 events (hh124) to 3,368,850 (mv001). Label
 | hh122 | 129,936 | 34 |
 | **Total** | **803,768** | |
 
-These stand in for the paper's Kasteren A/C, Orange4Home and MuRAL targets, which were not available.
+These stood in for the paper's Kasteren A/C, Orange4Home and MuRAL targets before those were found (iteration 3 adds Kasteren A/C and MuRAL, §2.5). They stay as targets so iterations can be compared.
 
 ### 2.2 Group B: CASAS Milan and Aruba
 
@@ -175,6 +188,41 @@ Start time           End time             Activity
 | Used for | pretraining | pretraining | fine-tune + test | fine-tune + test |
 
 All four end up in the same DomusFM arrays and 30-event windows (§3), so the model never sees these differences in file layout, only in sensors and activities.
+
+### 2.5 Group E: the paper's Kasteren A, Kasteren C and MuRAL (test homes, iteration 3)
+
+**Kasteren A and C** (van Kasteren et al., 2008). Same interval idea as UCI: one row per ON period, one row per activity, with numeric ids.
+
+```
+sensorData.txt (House A, tab-separated)          sensors.csv (House C, comma-separated)
+Start time            End time              ID  Val     19-Nov-2008 22:51:02,19-Nov-2008 22:51:04,25,1
+25-Feb-2008 09:36:43  25-Feb-2008 09:37:04  5   1
+activitiesData.txt: start, end, activity id      activities.csv: start, end, activity id
+```
+
+| Item | Kasteren A | Kasteren C |
+|---|---|---|
+| Id names | Built into `kasteren.py` (matched against the c4a copy) | `sensor_labels.txt` (id, item, room), `activity_labels.txt` |
+| Sensors | 14: doors (hall-toilet, hall-bathroom, hall-bedroom, front), cupboards, fridge, freezer, microwave, dishwasher, washing machine, toilet flush | 21: bed pressure mats, couch, cupboards, fridge, freezer, microwave, cutlery, keys, toilet flushes, doors, bathtub, sink |
+| Rooms | Not in the release; assigned from the item (kitchen, hall, toilet) | In `sensor_labels.txt` (two floors: upstairs, downstairs) |
+| Sensor types | Inferred from the item: door contact, contact switch, float (flush), pressure (bed, couch) | same |
+| Days / events / classes | 28 days / 2,636 / 8 incl. Other | 18 days / 45,400 / 18 incl. Other |
+| Note | | 18,717 of the 22,699 sensor rows are one bed pressure mat firing every few seconds during sleep, so 83 % of events are labelled "go to bed". This is the original data. |
+
+**MuRAL** (Chen et al., 2026). Multi-resident (2–4 people), 21 scripted sessions of about an hour each, labelled per event.
+
+```
+data.csv:  uid,time,sensor,action,Subject,Description,activity
+           0,07:22:45,bedroom_1 door,OPENED,A,"After getting up in the morning, A opens the door to bedroom_1.",6
+```
+
+| Item | Detail |
+|---|---|
+| Sensors (23) | Power meters on kitchen range hood, induction stove, coffee machine, microwave, kettle, TV, game console; motion; magnetic contacts on doors, cabinets, fridge, toilet, dining chairs (`sensors.json`) |
+| Actions | `turned ON` / `turned OFF` → ON / OFF; `OPENED` / `CLOSED` → ON / OFF. 92 annotation-only rows with no sensor are skipped |
+| Labels | Per event, per resident: 26 activities + "others" (`activities.json`). Each event becomes a zero-length episode; events in the same second are spread by 1 ms so each keeps its own label |
+| Time | Times of day only. Each session is placed in its own week of a dummy 2024 calendar (weekday sessions on a Wednesday, weekend on a Saturday); a session that passes midnight moves to the next day |
+| Size | 8,543 events, 27 classes incl. Other |
 
 ## 3. How the DomusFM reproduction reads the data
 
@@ -278,6 +326,21 @@ After steps 1 and 2:
 | 4 | 10:20:00 | bathroom area, motion, bathroom | 1 | toilet |
 
 `activities = ["Other", "cook", "toilet"]`. Rows 0–3 fall inside the cook episode (10:00–10:10), so all are labelled cook, including the door opening. That is how the paper's labelling works: the label is about time, not about which sensor fired. In a real file, step 3 would then take each run of 30 consecutive rows like these as one window.
+
+### 3.6 Cleaning before segmentation (iteration 3)
+
+`datasets.clean` in the config switches on `src/homefm/baselines/domusfm/clean.py` (off in earlier configs, so their results reproduce). It runs on the DomusFM arrays of every dataset, before windows are cut. Evidence and per-home numbers: [notebooks/domusfm_eda.ipynb](../notebooks/domusfm_eda.ipynb) §9–10.
+
+| # | Rule | Source | Removed |
+|---|---|---|---|
+| 1 | Drop sensors of type `scalar` (the undocumented numbers on motion names). Temperature is kept | EDA | 42,918 events (the ON/OFF events invented from 308,694 raw rows) |
+| 2 | Merge sensor ids that differ only in letter case | EDA | 6 sensor names in tm004 |
+| 3 | A binary sensor's events must alternate ON/OFF; drop an event that repeats its sensor's previous state (also removes exact duplicate rows) | **Paper, Appendix A**: "Such duplicate events are safely removed during the data cleaning process prior to segmentation" | 2,790,254 events |
+| — | Malformed readings | Already skipped by the loaders | 324 rows |
+| — | Rows out of time order | Already re-sorted by the loaders | 22 rows |
+| — | Unmatched activity labels, outages | Left as they are (rare; no safe automatic fix) | — |
+
+Effect: 28,120,516 → 25,287,344 events (10.1 % removed). By group: CASAS pretraining 9.0 %, Milan/Aruba 22.7 %, CASAS test homes 13.4 %, paper test datasets 1.3 %. Repeated states are common in CASAS because the 2025 release merges several physical motion sensors of a room into one name, so two sensors firing in turn look like ON, ON. After cleaning, a 30-event window covers more real time on the CASAS test homes (median 1.4–2.5 min before, 1.7–2.8 min after).
 
 ## 4. HomeFM only: Home Tokens and time-based windows
 

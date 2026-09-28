@@ -1,0 +1,112 @@
+{
+ "v": 4,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-09-28T19:17:09Z"
+ },
+ "title": "HomeFM: architecture and design",
+ "cover": "cover",
+ "order": [
+  "cover",
+  "agenda",
+  "goal",
+  "principle",
+  "qtypes",
+  "goals",
+  "domus-overview",
+  "domus-gaps",
+  "domus-keep",
+  "domus-results",
+  "limits-map",
+  "lim-1-2",
+  "lim-3-4",
+  "lim-5-6",
+  "lim-7-8",
+  "lim-9-10",
+  "system",
+  "paths",
+  "diary",
+  "model",
+  "token",
+  "registry",
+  "fusion",
+  "moment",
+  "stream",
+  "dinner",
+  "heads",
+  "tagger",
+  "sizes",
+  "pretrain",
+  "domus-game",
+  "why-drop",
+  "usecases",
+  "evidence",
+  "recipe",
+  "game1",
+  "game2",
+  "game3",
+  "side-by-side",
+  "why-both",
+  "ablation",
+  "variant-g",
+  "corpus-run",
+  "episodes",
+  "engines",
+  "agent",
+  "rhythms",
+  "e2e",
+  "data",
+  "data-gaps",
+  "eval",
+  "deploy",
+  "roadmap",
+  "status",
+  "risks",
+  "next"
+ ],
+ "sections": {
+  "s1": {
+   "description": "What HomeFM is for: the questions, goals and targets",
+   "start": "cover"
+  },
+  "s2": {
+   "description": "DomusFM, the baseline, and what our reproduction showed",
+   "start": "domus-overview"
+  },
+  "s3": {
+   "description": "DomusFM's 11 limitations and HomeFM's remedy for each",
+   "start": "limits-map"
+  },
+  "s4": {
+   "description": "System and model architecture, from Home Tokens to heads",
+   "start": "system"
+  },
+  "s5": {
+   "description": "Pretraining: why DomusFM's masking goes, and the games that replace it",
+   "start": "pretrain"
+  },
+  "s6": {
+   "description": "From model outputs to answers: episodes, engines, the agent",
+   "start": "episodes"
+  },
+  "s7": {
+   "description": "Data, evaluation, deployment, roadmap, status and next steps",
+   "start": "data"
+  }
+ },
+ "faces": {
+  "space-grotesk": {
+   "family": "Space Grotesk",
+   "href": "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400..700&display=swap"
+  },
+  "ibm-plex-sans": {
+   "family": "IBM Plex Sans",
+   "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+  },
+  "jetbrains-mono": {
+   "family": "JetBrains Mono",
+   "href": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap"
+  }
+ },
+ "designSystems": []
+}

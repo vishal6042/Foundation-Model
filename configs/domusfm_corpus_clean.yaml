@@ -1,0 +1,58 @@
+# Iteration 3 of the corpus-scale DomusFM run: the fixed pretraining game (configs/domusfm_corpus_fixed.yaml) plus
+#   1. data cleaning before segmentation (paper Appendix A: repeated states removed; plus EDA fixes),
+#   2. the paper's own test datasets Kasteren A, Kasteren C and MuRAL as extra targets (Orange4Home: email only),
+#   3. leave-one-dataset-out pretraining as in the paper (§6.1): a paper dataset is never in its own pretraining,
+#      but the other paper datasets are, so item-level sensor homes are no longer missing from pretraining.
+# Fine-tuning protocol unchanged from iteration 2, so the 7 earlier targets can be compared directly.
+#   python -m homefm.baselines.domusfm.run --overlay configs/domusfm_corpus_clean.yaml
+# EDA and cleaning evidence: notebooks/domusfm_eda.ipynb.
+out_dir: runs/domusfm_corpus_clean
+held_out: [uci_b, kasteren_a, kasteren_c, mural, hh101, hh103, hh105, hh110, hh119, hh122]
+ablation_no_pretrain: true
+# 5 pretraining runs. Each paper target: 77 CASAS homes + the other 3 paper datasets. The 6 CASAS test homes share
+# one run on the 77 CASAS homes + all 4 paper datasets. CASAS test homes are never pretrained on (as in iteration 2).
+pretrain_mode: groups
+pretrain_groups:
+  casas_test: [hh101, hh103, hh105, hh110, hh119, hh122]
+  uci_b: [uci_b]
+  kasteren_a: [kasteren_a]
+  kasteren_c: [kasteren_c]
+  mural: [mural]
+never_pretrain: [hh101, hh103, hh105, hh110, hh119, hh122]
+datasets:
+  source: list
+  cache_dir: data/cache/casas
+  clean: {drop_types: [scalar], merge_case: true, alternate: true}   # src/homefm/baselines/domusfm/clean.py
+  list:
+    - {kind: uci_adl, id: uci_b, path: "data/raw/uci/UCI ADL Binary Dataset", home: B}
+    - {kind: kasteren, id: kasteren_a, path: data/raw/kasteren/A, home: A}
+    - {kind: kasteren, id: kasteren_c, path: data/raw/kasteren/C, home: C}
+    - {kind: mural, id: mural, path: data/raw/mural}
+    - {kind: casas_fast, id: hh101, path: data/raw/casas/labeled/hh101.csv}
+    - {kind: casas_fast, id: hh103, path: data/raw/casas/labeled/hh103.csv}
+    - {kind: casas_fast, id: hh105, path: data/raw/casas/labeled/hh105.csv}
+    - {kind: casas_fast, id: hh110, path: data/raw/casas/labeled/hh110.csv}
+    - {kind: casas_fast, id: hh119, path: data/raw/casas/labeled/hh119.csv}
+    - {kind: casas_fast, id: hh122, path: data/raw/casas/labeled/hh122.csv}
+    - {kind: casas_fast_glob, path: "data/raw/casas/labeled/*.csv", pretrain_only: true}
+    - {kind: casas_fast, id: milan, path: data/raw/casas/data/milan.csv, pretrain_only: true}
+    - {kind: casas_fast, id: aruba, path: data/raw/casas/data/aruba.csv, pretrain_only: true}
+pretrain:                      # unchanged from iteration 2 (configs/domusfm_corpus_fixed.yaml)
+  steps_phase1: 20000
+  steps_phase2: 20000
+  log_every: 1000
+  homes_per_batch: 4
+  mask_both_views: true
+  attr_mask_p: 0.4
+  event_mask_p: 0.4
+  temperature: 0.2
+  time_jitter_s: 900
+  projector: true
+  mlm_weight: 1.0
+finetune:                      # unchanged from iteration 2; both heads: ADL (linear) and next-30 (dual linear)
+  tasks: [adl, next30]
+  train_pcts: [0.05, 0.30]
+  folds: 3
+  backbone_lr: 5.0e-5
+  head_lr: 1.0e-3
+  warmup_frac: 0.1

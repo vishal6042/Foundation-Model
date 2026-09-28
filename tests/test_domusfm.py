@@ -85,3 +85,23 @@ def test_fixed_pretraining_runs_and_mlm_uses_hidden_answers():
     heads = PretrainHeads(32, text.table)
     m = event_mask(8, 30, 0.5, "cpu")
     assert torch.isfinite(heads.mlm_loss(model(batch, attr_mask=m), batch, m))
+
+
+def test_clean_dataset():
+    import numpy as np
+
+    from homefm.baselines.domusfm.clean import clean_dataset
+    from homefm.baselines.domusfm.data import DomusDataset
+
+    # sensors: 0 motion, 1 same name in other case, 2 undocumented scalar codes
+    d = DomusDataset("h", ["Kitchen|motion", "KITCHEN|motion", "Bed|scalar"],
+                     [("kitchen area", "motion", "kitchen")] * 2 + [("bed", "scalar", "bedroom")], ["Other", "cook"],
+                     sensor=np.array([0, 0, 2, 1, 0, 0, 0]), status=np.array([1, 1, 1, 0, 0, 1, 1]),
+                     ts=np.arange(7.0), label=np.array([1, 1, 0, 1, 0, 0, 0]))
+    out, r = clean_dataset(d)
+    # scalar dropped; ids 0/1 merged; per sensor keep only state changes: ON(0) OFF(3) ON(5)
+    assert out.sensor_ids == ["Kitchen|motion"] and out.n_event_types == 2
+    assert out.ts.tolist() == [0.0, 3.0, 5.0] and out.status.tolist() == [1, 0, 1] and out.label.tolist() == [1, 1, 0]
+    assert r["dropped_type_events"] == 1 and r["merged_case_sensors"] == 1 and r["dropped_repeat_events"] == 3
+    same, _ = clean_dataset(d, drop_types=(), merge_case=False, alternate=False)
+    assert same.n_events == 7

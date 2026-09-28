@@ -31,7 +31,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 BASE = ROOT / "configs" / "domusfm.yaml"
 DEFAULT_OVERLAY = "configs/domusfm_corpus_fixed.yaml"
-LAST_RUN = ROOT / "results" / "domusfm_corpus" / "results.json"  # paper-masking run, for comparison
+LAST_RUN = ROOT / "results" / "domusfm_corpus_fixed" / "results.json"  # iteration 2 (fixed game), for comparison
 HEADER = "##### domusfm_train start"
 
 PRE = re.compile(r"pretrain\[(\w+)\] step\s+(\d+) loss ([\d.]+)"
@@ -144,8 +144,12 @@ def read_log(log: Path) -> str:
 
 def parse(text: str) -> dict:
     seg = text[text.rfind(HEADER):] if HEADER in text else text  # the current launch only
+    # grouped pretraining (pretrain_mode: groups) runs several pretrainings: show only the latest one
+    k = text.rfind("[domusfm] pretraining on")
+    pre_text = text[k:] if k >= 0 else text
+    last_result = max(text.rfind("\n  adl"), text.rfind("\n  next"))
     losses = {}  # (phase, step) -> row, across launches so a resumed run keeps its history
-    for m in PRE.finditer(text):
+    for m in PRE.finditer(pre_text):
         ph, st = m.group(1), int(m.group(2))
         losses[(ph, st)] = dict(phase=ph, step=st, loss=float(m.group(3)),
                                 contrastive=float(m.group(4)) if m.group(4) else float(m.group(3)),
@@ -157,6 +161,7 @@ def parse(text: str) -> dict:
         losses=[losses[k] for k in sorted(losses, key=lambda k: (k[0] != "attribute", k[1]))],
         recent=recent,
         reused="[domusfm] reusing" in seg,
+        pretraining_now=k >= 0 and k > last_result,
         done="[domusfm] saved" in seg,
         error=next((ln for ln in reversed(lines) if re.match(r"\w*(Error|Exception)\b", ln)), None)
         if "Traceback" in seg else None,
@@ -254,13 +259,17 @@ def render(cfg: dict, overlay: str) -> tuple[str, bool]:
     # pretraining
     s1, s2 = pt["steps_phase1"], pt["steps_phase2"]
     L += ["", "PRETRAINING"]
-    ckpt = out / "pretrained_shared.pt"
-    if info["reused"] or (ckpt.exists() and not info["recent"]):
+    n_runs = len(cfg.get("pretrain_groups") or {}) or 1
+    saved = [c for c in out.glob("pretrained_*.pt") if not c.stem.endswith("_progress")]
+    if n_runs > 1:
+        L[-1] += f"   ({len(saved)}/{n_runs} runs saved{', one in progress' if info['pretraining_now'] else ''})"
+    if not info["pretraining_now"] and (info["reused"] or (saved and not info["recent"])):
         L.append("  done (saved backbone reused)")
     elif info["losses"]:
         last = info["losses"][-1]
         overall = last["step"] + (s1 if last["phase"] == "event" else 0)
-        pre_done = n_done > 0 or "=== held-out" in read_log(log)[-20000:]
+        pre_done = not info["pretraining_now"] if n_runs > 1 else (
+            n_done > 0 or "=== held-out" in read_log(log)[-20000:])
         frac = 1.0 if pre_done else min(1.0, overall / max(1, s1 + s2))
         L.append(f"  {bar(frac)}  phase {1 if last['phase'] == 'attribute' else 2}/2 ({last['phase']}), "
                  f"step {last['step']:,}/{s1 if last['phase'] == 'attribute' else s2:,}")
