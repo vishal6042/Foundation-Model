@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DomusFM Reproduction: Results</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400..700&display=swap"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  body { margin:0; background:#2A2F3A; font-family:'IBM Plex Sans', Arial, sans-serif; }
+  .deck { max-width:1280px; margin:0 auto; padding:24px 16px 48px; display:flex; flex-direction:column; gap:24px; }
+  .frame { position:relative; width:100%; aspect-ratio:16/9; overflow:hidden; border-radius:8px; box-shadow:0 4px 24px rgba(0,0,0,.35); }
+  .frame > section { position:absolute; left:0; top:0; width:1920px; height:1080px; box-sizing:border-box; transform-origin:0 0; overflow:hidden; }
+  section * { box-sizing:border-box; }
+  section h1, section h2, section h3, section p, section ul, section ol { margin:0; }
+  section ul, section ol { padding-left:1.2em; }
+  section table { border-collapse:collapse; width:100%; }
+  section th, section td { padding:0.35em 0.6em; border-bottom:1px solid #C9CFD8; text-align:left; font-weight:inherit; }
+  section th { font-weight:600; }
+  section aside { display:none; }
+  x-shape { display:block; flex:none; }
+  x-shape[kind="arrow-right"] { clip-path:polygon(0 30%,60% 30%,60% 0,100% 50%,60% 100%,60% 70%,0 70%); }
+  .notes { color:#C9D1DD; font-size:14px; line-height:1.5; margin:-12px 4px 8px; }
+</style>
+</head>
+<body>
+<div class="deck">
+<div class="frame" data-n="1">
+<section id="cover" data-transition="fade" style="background:#14213D; color:#F7F6F2; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; justify-content:center; gap:40px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#8FB4E0">Experiment report · September 2026</p>
+<h1 style="font-family:'Source Serif 4', Georgia, serif; font-size:120px; font-weight:600; line-height:1.05">DomusFM reproduction</h1>
+<p style="font-size:44px; line-height:1.3; color:#C9D6E8; width:1400px">Setup, results and limitations of our DomusFM pretraining experiment, and how HomeFM addresses DomusFM's limitations</p>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#9FB0C8">77-home pretraining · 7 held-out homes · one RTX 4090</p>
+<aside>Independent reproduction of DomusFM (arXiv 2602.01910), pretrained on 77 homes and tested on 7 homes it never saw. Run finished 25 September 2026.</aside>
+</section>
+</div>
+<div class="frame" data-n="2">
+<section id="takeaway" data-transition="fade" style="background:#2F6FB0; color:#FCFCFB; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; justify-content:center; gap:40px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#E3EDF8">The short version</p>
+<p style="font-family:'Source Serif 4', Georgia, serif; font-size:240px; font-weight:600; line-height:1">26 of 28</p>
+<p style="font-size:44px; line-height:1.3; width:1500px">settings where pretrained DomusFM beats the same model trained from scratch, on 7 homes it never saw during pretraining.</p>
+<div style="display:flex; gap:96px">
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">+0.076</p>
+<p style="font-size:24px; color:#E3EDF8">Activity F1 gain, 5 % labels</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">+0.053</p>
+<p style="font-size:24px; color:#E3EDF8">Next-30 F1 gain, 5 % labels</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">0.70–0.82</p>
+<p style="font-size:24px; color:#E3EDF8">Training loss held, no collapse</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#E3EDF8">DomusFM reproduction · 2</p>
+<aside>7 held-out homes, 2 tasks, 2 label fractions = 28 comparisons. Pretrained wins 26; the two losses are about 0.01 each, within noise. Gains are means over the 7 homes.</aside>
+</section>
+</div>
+<div class="frame" data-n="3">
+<section id="intro" data-transition="fade" style="background:#F7F6F2; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">Introduction</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">What DomusFM is</h2>
+</div>
+<div style="display:flex; gap:64px; align-items:start">
+<div style="flex:3; display:flex; flex-direction:column; gap:28px">
+<p style="font-size:32px; line-height:1.4; color:#3F4A5A">DomusFM is a foundation model for smart-home sensor events, by Fiori, Civitarese, Salim and Bettini (arXiv 2602.01910).</p>
+<p style="font-size:32px; line-height:1.4; color:#3F4A5A">It reads streams of binary ON/OFF sensor events, learns general patterns from unlabelled homes, then adapts to a new home using only a few labels.</p>
+<p style="font-size:32px; line-height:1.4; color:#3F4A5A">The authors' code is not public, so this is an independent implementation built from the paper's description.</p>
+</div>
+<div style="flex:2; display:flex; flex-direction:column; gap:16px; background:#FCFCFB; border:1px solid #D5D9E0; border-top:6px solid #2F6FB0; border-radius:16px; padding:40px">
+<h3 style="font-size:32px; font-weight:600; line-height:1.2">Why it matters here</h3>
+<p style="font-size:28px; line-height:1.4; color:#3F4A5A">DomusFM is the main baseline for HomeFM. Before comparing the two, the reproduction must be sound, which means its pretraining has to actually help.</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 3</p>
+</section>
+</div>
+<div class="frame" data-n="4">
+<section id="model" data-transition="fade" style="background:#F7F6F2; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">Introduction · the model</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">How the model reads a home</h2>
+</div>
+<div style="display:flex; gap:24px; align-items:stretch">
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:32px">
+<p style="font-size:24px; font-weight:600; color:#2F6FB0">1</p>
+<h3 style="font-size:28px; font-weight:600; line-height:1.2">One sensor event</h3>
+<p style="font-size:24px; line-height:1.4; color:#3F4A5A">Item, type and room as text, embedded by a frozen MiniLM. Status ON or OFF. Time: day, hour, second.</p>
+</div>
+<x-shape kind="arrow-right" style="width:48px; height:24px; background:#9AA1AD; align-self:center"></x-shape>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:32px">
+<p style="font-size:24px; font-weight:600; color:#2F6FB0">2</p>
+<h3 style="font-size:28px; font-weight:600; line-height:1.2">Attribute attention</h3>
+<p style="font-size:24px; line-height:1.4; color:#3F4A5A">One transformer layer fuses the 5 attributes into a single event vector.</p>
+</div>
+<x-shape kind="arrow-right" style="width:48px; height:24px; background:#9AA1AD; align-self:center"></x-shape>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:32px">
+<p style="font-size:24px; font-weight:600; color:#2F6FB0">3</p>
+<h3 style="font-size:28px; font-weight:600; line-height:1.2">Context encoder</h3>
+<p style="font-size:24px; line-height:1.4; color:#3F4A5A">A 12-layer transformer, 12 heads, width 384, reads a window of 30 events. No positional encoding.</p>
+</div>
+<x-shape kind="arrow-right" style="width:48px; height:24px; background:#9AA1AD; align-self:center"></x-shape>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:32px">
+<p style="font-size:24px; font-weight:600; color:#2F6FB0">4</p>
+<h3 style="font-size:28px; font-weight:600; line-height:1.2">Task heads</h3>
+<p style="font-size:24px; line-height:1.4; color:#3F4A5A">ADL: the activity at the last event. Next-30: which events come next, and how many.</p>
+</div>
+</div>
+<p style="font-size:28px; line-height:1.4; color:#3F4A5A">28.6M parameters in total. The paper reports 36.1M; the gap is unexplained, since layer widths such as the feed-forward size (2048 here) are not reported.</p>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 4</p>
+</section>
+</div>
+<div class="frame" data-n="5">
+<section id="tasks" data-transition="fade" style="background:#F7F6F2; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">Introduction · training and testing</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Pretraining, then two tests</h2>
+</div>
+<div style="display:flex; gap:32px; align-items:stretch">
+<div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#FCFCFB; border:1px solid #D5D9E0; border-top:6px solid #2F6FB0; border-radius:16px; padding:40px">
+<h3 style="font-size:32px; font-weight:600; line-height:1.2">Pretraining: a matching game</h3>
+<p style="font-size:28px; line-height:1.4; color:#3F4A5A">Two masked copies of the same 30-event window must find each other among 128 candidates (InfoNCE loss). Phase 1 hides attributes; phase 2 hides whole events.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:40px">
+<h3 style="font-size:32px; font-weight:600; line-height:1.2">Test 1 · Activity (ADL)</h3>
+<p style="font-size:28px; line-height:1.4; color:#3F4A5A">Name the activity at the last event of a window, such as cooking or sleeping. Scored with weighted F1.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:40px">
+<h3 style="font-size:32px; font-weight:600; line-height:1.2">Test 2 · Next-30</h3>
+<p style="font-size:28px; line-height:1.4; color:#3F4A5A">Predict which event types occur in the next 30 events, and how often. Scored with multiset F1.</p>
+</div>
+</div>
+<p style="font-size:28px; line-height:1.4; color:#14213D; background:#E3ECF7; border-radius:12px; padding:28px 32px">Every score is compared with the same model trained from random weights ("no pretraining"). Pretraining is only worth having if it beats that. F1 runs from 0 to 1; higher is better.</p>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 5</p>
+</section>
+</div>
+<div class="frame" data-n="6">
+<section id="setup" data-transition="fade" style="background:#EDF0F4; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">Experimental setup</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Data and protocol</h2>
+</div>
+<div style="display:flex; gap:96px; align-items:start">
+<div style="width:440px; display:flex; flex-direction:column; gap:32px">
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-family:'Source Serif 4', Georgia, serif; font-size:96px; font-weight:600; line-height:1.05; color:#2F6FB0">77</p>
+<p style="font-size:24px; color:#3F4A5A">homes used for pretraining</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-family:'Source Serif 4', Georgia, serif; font-size:96px; font-weight:600; line-height:1.05; color:#2F6FB0">27.3M</p>
+<p style="font-size:24px; color:#3F4A5A">sensor events, unlabelled</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-family:'Source Serif 4', Georgia, serif; font-size:96px; font-weight:600; line-height:1.05; color:#2F6FB0">7</p>
+<p style="font-size:24px; color:#3F4A5A">held-out homes for testing</p>
+</div>
+</div>
+<ul style="flex:1; font-size:28px; line-height:1.5; color:#3F4A5A">
+<li>Pretrain once on 77 homes: every labelled CASAS home except the 7 test homes, plus Milan and Aruba.</li>
+<li>No data from a test home is seen during pretraining.</li>
+<li>Test homes: UCI Home B and CASAS hh101, hh103, hh105, hh110, hh119, hh122.</li>
+<li>Fine-tune on 5 % or 30 % of a test home's labels, for 10 epochs.</li>
+<li>3 time-contiguous folds per home; results are mean ± std.</li>
+<li>Up to 20,000 test windows per fold.</li>
+</ul>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 6</p>
+<aside>No data from any of the 7 test homes is used in pretraining, which is stricter than the paper's leave-one-dataset-out setup.</aside>
+</section>
+</div>
+<div class="frame" data-n="7">
+<section id="params" data-transition="fade" style="background:#EDF0F4; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">Experimental setup</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Experimental parameters</h2>
+</div>
+<table style="font-size:24px; color:#14213D">
+<tr style="background:#DDE3EC"><th style="width:22%">Parameter</th><th style="width:48%">Setting</th><th style="width:30%">Source</th></tr>
+<tr><td>Model</td><td>28.6M params · 12 layers · 12 heads · d 384</td><td>Paper (widths guessed)</td></tr>
+<tr><td>Input window</td><td>30 events, sliding by 1</td><td>Paper</td></tr>
+<tr><td>Pretraining</td><td>20,000 + 20,000 steps, batch 128, AdamW 1e-4</td><td>Our choice (not reported)</td></tr>
+<tr><td>Batch make-up</td><td>4 homes × 32 windows</td><td style="color:#1F5A96">Our addition</td></tr>
+<tr><td>Masking</td><td>40 % of both copies</td><td style="color:#1F5A96">Our choice (not reported)</td></tr>
+<tr><td>Temperature</td><td>0.2</td><td style="color:#1F5A96">Our choice (not reported)</td></tr>
+<tr><td>Clock jitter</td><td>±15 minutes per copy</td><td style="color:#1F5A96">Our addition</td></tr>
+<tr><td>Projection head</td><td>MLP, dropped after pretraining</td><td style="color:#1F5A96">Our addition</td></tr>
+<tr><td>Extra loss</td><td>Predict hidden attributes (weight 1.0)</td><td style="color:#1F5A96">Our addition</td></tr>
+<tr><td>Fine-tuning</td><td>10 epochs, batch 64; backbone LR 5e-5, head 1e-3, 10 % warm-up</td><td>Paper (epochs) + our choice</td></tr>
+</table>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 7 · Config: configs/domusfm_corpus_fixed.yaml · Blue = our change to the paper's pretraining game</p>
+<aside>The paper does not report masking rate, temperature, pretraining length or learning rates, so those are our choices. The additions are explained on slide 9.</aside>
+</section>
+</div>
+<div class="frame" data-n="8">
+<section id="paper" data-transition="fade" style="background:#EDF0F4; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">Paper vs this work</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">How this differs from the paper</h2>
+</div>
+<table style="font-size:24px; color:#14213D">
+<tr style="background:#DDE3EC"><th style="width:20%">Aspect</th><th style="width:40%">Paper</th><th style="width:40%">This reproduction</th></tr>
+<tr><td>Code</td><td>Authors' implementation (not public)</td><td>Independent, from the paper text</td></tr>
+<tr><td>Model size</td><td>36.1M parameters</td><td>28.6M (unreported widths guessed)</td></tr>
+<tr><td>Test datasets</td><td>Milan, Aruba, UCI B, Kasteren A/C, MuRAL, Orange4Home</td><td>UCI B + 6 CASAS homes (others unavailable)</td></tr>
+<tr><td>Pretraining data</td><td>Leave-one-out: the other 6 datasets</td><td>Once, on 77 other homes (27.3M events)</td></tr>
+<tr><td>CASAS data</td><td>Original: one id per sensor, labelled</td><td>2025 release: sensors merged per room</td></tr>
+<tr><td>CV folds</td><td>5-fold cross-validation</td><td>3 time-contiguous folds (no leakage)</td></tr>
+<tr><td>Label amounts</td><td>5, 10, 15 and 30 %</td><td>5 and 30 %</td></tr>
+<tr><td>Tasks</td><td>ADL, Next-10, Next-30, clustering</td><td>ADL and Next-30</td></tr>
+<tr><td>Pretraining game</td><td>Masking, temperature, steps not reported</td><td>Our choices, plus a harder game (slide 9)</td></tr>
+<tr><td>Comparisons</td><td>DeepCASAS, GPT-2, Chronos, ablations</td><td>No-pretraining ablation only</td></tr>
+</table>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 8 · Only UCI Home B is directly comparable with the paper (slide 15)</p>
+<aside>In the 2025 CASAS release, Milan and Aruba have no activity labels and their sensors are merged into 9 to 10 room names, so they are used for pretraining only. Contiguous folds matter: consecutive windows share 29 of 30 events, so random folds put near-copies of test windows into training. On UCI B, random folds raised no-pretraining ADL from 0.28 to 0.40.</aside>
+</section>
+</div>
+<div class="frame" data-n="9">
+<section id="fixes" data-transition="fade" style="background:#EDF0F4; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">Pretraining design</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">A harder matching game</h2>
+</div>
+<table style="font-size:24px; color:#14213D">
+<tr style="background:#DDE3EC"><th style="width:25%">Change</th><th style="width:50%">What it does</th><th style="width:25%">Config setting</th></tr>
+<tr><td>1 · Same-home candidates</td><td>Each batch holds 4 homes × 32 windows, so sensor names give nothing away</td><td>homes_per_batch: 4</td></tr>
+<tr><td>2 · Clock jitter</td><td>Shifts each copy's clock by up to ±15 min; gaps and time of day are kept</td><td>time_jitter_s: 900</td></tr>
+<tr><td>3 · Mask both copies</td><td>Hides 40 % of both copies, with a softer temperature</td><td>mask_both_views, 0.4, τ 0.2</td></tr>
+<tr><td>4 · Projection head</td><td>A small MLP plays the game and is dropped after pretraining</td><td>projector: true</td></tr>
+<tr><td>5 · Fill in the blanks</td><td>Predicts the hidden item, type, room and ON/OFF status</td><td>mlm_weight: 1.0</td></tr>
+<tr><td>6 · Gentler fine-tuning</td><td>Backbone LR 5e-5, head 1e-3, 10 % warm-up; also used for the baseline</td><td>backbone_lr, head_lr</td></tr>
+</table>
+<p style="font-size:24px; line-height:1.4; color:#3F4A5A">Each change stops the model from matching copies by surface clues, so it has to learn how the home behaves. With all six off, the code runs the paper's recipe.</p>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 9</p>
+<aside>Change 6 is applied to the from-scratch baseline too, so the comparison stays fair. Why each change is needed is written up in the HomeFM limitations document, L11.</aside>
+</section>
+</div>
+<div class="frame" data-n="10">
+<section id="loss" data-transition="fade" style="background:#F7F6F2; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">Training health · pretraining loss, log scale</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Pretraining stayed healthy</h2>
+</div>
+<svg aria-label="Pretraining losses per 1,000 steps on a log scale over two 20,000-step phases. The matching loss drops from 4.1 to about 0.85 by step 1,000 and stays between 0.70 and 0.82 for the rest of training. The fill-in-the-blanks loss drops from 3.6 to about 0.2 in phase 1, restarts at 2.3 in phase 2 and settles between 0.5 and 0.7." width="1560" height="500" viewBox="0 0 1560 500" xmlns="http://www.w3.org/2000/svg" style="position:absolute; left:232px; top:300px; width:1560px; height:500px">
+<g stroke="#DDE1E7" stroke-width="1.5">
+<line x1="0" y1="20" x2="1560" y2="20"/>
+<line x1="0" y1="140.3" x2="1560" y2="140.3"/>
+<line x1="0" y1="250" x2="1560" y2="250"/>
+<line x1="0" y1="370.3" x2="1560" y2="370.3"/>
+<line x1="0" y1="480" x2="1560" y2="480"/>
+</g>
+<line x1="800" y1="20" x2="800" y2="480" stroke="#9AA1AD" stroke-width="2" stroke-dasharray="8 8"/>
+<line x1="0" y1="92.3" x2="1560" y2="92.3" stroke="#7A8494" stroke-width="2" stroke-dasharray="4 8"/>
+<polyline fill="none" stroke="#C8691E" stroke-width="4" stroke-linejoin="round" stroke-linecap="round" points="0.0,122.0 40.0,343.2 80.0,367.9 120.0,404.2 160.0,413.1 200.0,420.7 240.0,416.5 280.0,400.7 320.0,400.3 360.0,392.2 400.0,410.8 440.0,405.5 480.0,415.4 520.0,411.6 560.0,422.9 600.0,398.2 640.0,434.2 680.0,391.3 720.0,414.2 760.0,431.7 800.0,167.7 840.0,297.5 880.0,300.9 920.0,286.5 960.0,316.5 1000.0,299.5 1040.0,313.6 1080.0,292.3 1120.0,305.4 1160.0,291.7 1200.0,317.8 1240.0,312.1 1280.0,294.5 1320.0,316.6 1360.0,311.0 1400.0,298.6 1440.0,290.0 1480.0,318.4 1520.0,304.3 1560.0,305.0"/>
+<polyline fill="none" stroke="#2F6FB0" stroke-width="4" stroke-linejoin="round" stroke-linecap="round" points="0.0,108.8 40.0,265.2 80.0,275.3 120.0,274.5 160.0,273.4 200.0,280.7 240.0,280.7 280.0,283.9 320.0,281.3 360.0,282.1 400.0,282.4 440.0,284.3 480.0,284.3 520.0,283.5 560.0,280.5 600.0,284.1 640.0,284.9 680.0,280.8 720.0,282.7 760.0,286.0 800.0,199.0 840.0,266.4 880.0,271.8 920.0,273.9 960.0,275.4 1000.0,271.9 1040.0,270.0 1080.0,268.7 1120.0,274.1 1160.0,274.8 1200.0,274.3 1240.0,269.7 1280.0,277.1 1320.0,275.3 1360.0,270.1 1400.0,272.3 1440.0,273.9 1480.0,272.7 1520.0,273.4 1560.0,270.1"/>
+</svg>
+<p style="position:absolute; left:128px; top:303px; width:88px; font-size:24px; text-align:right; color:#5F6B7A">10</p>
+<p style="position:absolute; left:128px; top:423px; width:88px; font-size:24px; text-align:right; color:#5F6B7A">3</p>
+<p style="position:absolute; left:128px; top:533px; width:88px; font-size:24px; text-align:right; color:#5F6B7A">1</p>
+<p style="position:absolute; left:128px; top:653px; width:88px; font-size:24px; text-align:right; color:#5F6B7A">0.3</p>
+<p style="position:absolute; left:128px; top:763px; width:88px; font-size:24px; text-align:right; color:#5F6B7A">0.1</p>
+<p style="position:absolute; left:1392px; top:350px; width:400px; font-size:24px; text-align:right; color:#5F6B7A">Chance level ≈ 4.85</p>
+<div style="position:absolute; left:1060px; top:508px; width:732px; display:flex; gap:12px; align-items:center; justify-content:end">
+<div style="width:32px; height:6px; background:#2F6FB0; border-radius:3px"></div>
+<p style="font-size:24px; color:#14213D">Matching loss: stays at 0.70–0.82</p>
+</div>
+<div style="position:absolute; left:1060px; top:640px; width:732px; display:flex; gap:12px; align-items:center; justify-content:end">
+<div style="width:32px; height:6px; background:#C8691E; border-radius:3px"></div>
+<p style="font-size:24px; color:#14213D">Fill-in-the-blanks loss: keeps falling</p>
+</div>
+<p style="position:absolute; left:232px; top:812px; width:800px; font-size:24px; text-align:center; color:#5F6B7A">Phase 1 · attribute masking · 20,000 steps</p>
+<p style="position:absolute; left:1032px; top:812px; width:760px; font-size:24px; text-align:center; color:#5F6B7A">Phase 2 · event masking · 20,000 steps</p>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 10 · Losses logged every 1,000 steps</p>
+<aside>A healthy matching loss stays well above zero: the game is still hard, so the model keeps learning. The fill-in-the-blanks loss fell from 3.60 to 0.16 in phase 1 and from 2.28 to about 0.58 in phase 2. Embedding spread (z_std) stayed at 0.088, far from collapse.</aside>
+</section>
+</div>
+<div class="frame" data-n="11">
+<section id="gain" data-transition="fade" style="background:#F7F6F2; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">Results · gain from pretraining</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Pretraining helps in every setting</h2>
+</div>
+<svg aria-label="Bar chart of mean F1 gain from pretraining over 7 homes: ADL 5 percent plus 0.076, ADL 30 percent plus 0.059, Next-30 5 percent plus 0.053, Next-30 30 percent plus 0.030." width="1000" height="480" viewBox="0 0 1000 480" xmlns="http://www.w3.org/2000/svg" style="position:absolute; left:240px; top:340px; width:1000px; height:480px">
+<g stroke="#DDE1E7" stroke-width="1.5">
+<line x1="0" y1="20" x2="1000" y2="20"/>
+<line x1="0" y1="240" x2="1000" y2="240"/>
+</g>
+<rect x="75" y="125.6" width="100" height="334.4" rx="4" fill="#2F6FB0"/>
+<rect x="325" y="200.4" width="100" height="259.6" rx="4" fill="#2F6FB0"/>
+<rect x="575" y="226.8" width="100" height="233.2" rx="4" fill="#2F6FB0"/>
+<rect x="825" y="328" width="100" height="132" rx="4" fill="#2F6FB0"/>
+<line x1="0" y1="460" x2="1000" y2="460" stroke="#5F6B7A" stroke-width="2"/>
+</svg>
+<p style="position:absolute; left:128px; top:343px; width:96px; font-size:24px; text-align:right; color:#5F6B7A">+0.10</p>
+<p style="position:absolute; left:128px; top:563px; width:96px; font-size:24px; text-align:right; color:#5F6B7A">+0.05</p>
+<p style="position:absolute; left:128px; top:783px; width:96px; font-size:24px; text-align:right; color:#5F6B7A">0</p>
+<p style="position:absolute; left:305px; top:426px; width:120px; font-size:24px; font-weight:600; text-align:center; color:#14213D">+0.076</p>
+<p style="position:absolute; left:555px; top:500px; width:120px; font-size:24px; font-weight:600; text-align:center; color:#14213D">+0.059</p>
+<p style="position:absolute; left:805px; top:527px; width:120px; font-size:24px; font-weight:600; text-align:center; color:#14213D">+0.053</p>
+<p style="position:absolute; left:1055px; top:628px; width:120px; font-size:24px; font-weight:600; text-align:center; color:#14213D">+0.030</p>
+<p style="position:absolute; left:240px; top:832px; width:250px; font-size:24px; text-align:center; color:#3F4A5A">ADL · 5 %</p>
+<p style="position:absolute; left:490px; top:832px; width:250px; font-size:24px; text-align:center; color:#3F4A5A">ADL · 30 %</p>
+<p style="position:absolute; left:740px; top:832px; width:250px; font-size:24px; text-align:center; color:#3F4A5A">Next-30 · 5 %</p>
+<p style="position:absolute; left:990px; top:832px; width:250px; font-size:24px; text-align:center; color:#3F4A5A">Next-30 · 30 %</p>
+<div style="position:absolute; left:1320px; top:340px; width:472px; display:flex; flex-direction:column; gap:16px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:32px">
+<h3 style="font-size:28px; font-weight:600; line-height:1.2">Homes where pretraining wins</h3>
+<p style="font-size:26px; color:#3F4A5A">ADL 5 %: <b>7</b> of 7</p>
+<p style="font-size:26px; color:#3F4A5A">ADL 30 %: <b>6</b> of 7</p>
+<p style="font-size:26px; color:#3F4A5A">Next-30 5 %: <b>7</b> of 7</p>
+<p style="font-size:26px; color:#3F4A5A">Next-30 30 %: <b>6</b> of 7</p>
+</div>
+<p style="position:absolute; left:1320px; top:700px; width:472px; font-size:24px; line-height:1.4; color:#3F4A5A">Total: 26 of 28 settings. The two losses are about 0.01, within noise.</p>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 11 · Gain = pretrained F1 − from-scratch F1, mean over 7 held-out homes</p>
+<aside>The gain shrinks as labels grow (ADL +0.076 to +0.059, Next-30 +0.053 to +0.030). That is the expected shape when pretraining is useful: it matters most when labels are scarce.</aside>
+</section>
+</div>
+<div class="frame" data-n="12">
+<section id="scores" data-transition="fade" style="background:#F7F6F2; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">Results · absolute scores</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Scores across the 7 test homes</h2>
+</div>
+<table style="font-size:28px; color:#14213D">
+<tr style="background:#DDE3EC"><th style="width:31%">Mean F1, 7 homes</th><th style="width:23%; text-align:right">Pretrained</th><th style="width:23%; text-align:right">From scratch</th><th style="width:23%; text-align:right">Gain</th></tr>
+<tr><td>ADL · 5 %</td><td style="text-align:right">0.517</td><td style="text-align:right">0.441</td><td style="text-align:right; color:#1F5A96">+0.076</td></tr>
+<tr><td>ADL · 30 %</td><td style="text-align:right">0.529</td><td style="text-align:right">0.470</td><td style="text-align:right; color:#1F5A96">+0.059</td></tr>
+<tr><td>Next-30 · 5 %</td><td style="text-align:right">0.649</td><td style="text-align:right">0.597</td><td style="text-align:right; color:#1F5A96">+0.053</td></tr>
+<tr><td>Next-30 · 30 %</td><td style="text-align:right">0.613</td><td style="text-align:right">0.583</td><td style="text-align:right; color:#1F5A96">+0.030</td></tr>
+</table>
+<div style="display:flex; gap:32px">
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#E3ECF7; border-radius:16px; padding:32px">
+<h3 style="font-size:32px; font-weight:600; line-height:1.2">The gain shrinks as labels grow</h3>
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A">ADL +0.076 → +0.059, Next-30 +0.053 → +0.030. Pretraining matters most when labels are scarce.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:32px">
+<h3 style="font-size:32px; font-weight:600; line-height:1.2">Without UCI Home B</h3>
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A">ADL gain +0.055 / +0.022, Next-30 gain +0.061 / +0.037 (5 % / 30 % labels).</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 12 · From scratch = same model trained from random weights, same fine-tuning</p>
+</section>
+</div>
+<div class="frame" data-n="13">
+<section id="adl" data-transition="fade" style="background:#EDF0F4; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">Results per home</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Activity recognition (ADL)</h2>
+</div>
+<table style="font-size:26px; color:#14213D">
+<tr style="background:#DDE3EC"><th style="width:12%">Home</th><th style="width:16%; text-align:right">5 % pretrained</th><th style="width:16%; text-align:right">5 % scratch</th><th style="width:12%; text-align:right">Gain</th><th style="width:16%; text-align:right">30 % pretrained</th><th style="width:16%; text-align:right">30 % scratch</th><th style="width:12%; text-align:right">Gain</th></tr>
+<tr><td>uci_b</td><td style="text-align:right">0.452 ± 0.021</td><td style="text-align:right">0.252 ± 0.041</td><td style="text-align:right; color:#1F5A96">+0.200</td><td style="text-align:right">0.568 ± 0.030</td><td style="text-align:right">0.285 ± 0.036</td><td style="text-align:right; color:#1F5A96">+0.283</td></tr>
+<tr><td>hh101</td><td style="text-align:right">0.581 ± 0.020</td><td style="text-align:right">0.550 ± 0.023</td><td style="text-align:right; color:#1F5A96">+0.031</td><td style="text-align:right">0.555 ± 0.025</td><td style="text-align:right">0.567 ± 0.001</td><td style="text-align:right; color:#A4520F">−0.012</td></tr>
+<tr><td>hh103</td><td style="text-align:right">0.744 ± 0.023</td><td style="text-align:right">0.683 ± 0.006</td><td style="text-align:right; color:#1F5A96">+0.061</td><td style="text-align:right">0.758 ± 0.020</td><td style="text-align:right">0.729 ± 0.013</td><td style="text-align:right; color:#1F5A96">+0.029</td></tr>
+<tr><td>hh105</td><td style="text-align:right">0.453 ± 0.027</td><td style="text-align:right">0.397 ± 0.021</td><td style="text-align:right; color:#1F5A96">+0.056</td><td style="text-align:right">0.443 ± 0.032</td><td style="text-align:right">0.433 ± 0.028</td><td style="text-align:right; color:#1F5A96">+0.010</td></tr>
+<tr><td>hh110</td><td style="text-align:right">0.433 ± 0.006</td><td style="text-align:right">0.341 ± 0.027</td><td style="text-align:right; color:#1F5A96">+0.092</td><td style="text-align:right">0.427 ± 0.009</td><td style="text-align:right">0.369 ± 0.027</td><td style="text-align:right; color:#1F5A96">+0.058</td></tr>
+<tr><td>hh119</td><td style="text-align:right">0.472 ± 0.047</td><td style="text-align:right">0.411 ± 0.048</td><td style="text-align:right; color:#1F5A96">+0.061</td><td style="text-align:right">0.463 ± 0.065</td><td style="text-align:right">0.441 ± 0.037</td><td style="text-align:right; color:#1F5A96">+0.022</td></tr>
+<tr><td>hh122</td><td style="text-align:right">0.484 ± 0.009</td><td style="text-align:right">0.453 ± 0.024</td><td style="text-align:right; color:#1F5A96">+0.031</td><td style="text-align:right">0.491 ± 0.020</td><td style="text-align:right">0.465 ± 0.013</td><td style="text-align:right; color:#1F5A96">+0.026</td></tr>
+<tr style="background:#DDE3EC"><td>Mean</td><td style="text-align:right">0.517</td><td style="text-align:right">0.441</td><td style="text-align:right; color:#1F5A96">+0.076</td><td style="text-align:right">0.529</td><td style="text-align:right">0.470</td><td style="text-align:right; color:#1F5A96">+0.059</td></tr>
+</table>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 13 · Weighted F1, mean ± std over 3 contiguous folds</p>
+<aside>Pretraining wins on every home with 5 % labels. The largest gain is on UCI B, the smallest and most unusual home. Without UCI B the mean gain is +0.055 (5 %) and +0.022 (30 %). The hh101 loss at 30 % and the hh119 win at 30 % are both within the fold spread.</aside>
+</section>
+</div>
+<div class="frame" data-n="14">
+<section id="next30" data-transition="fade" style="background:#EDF0F4; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">Results per home</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Next-30 event prediction</h2>
+</div>
+<table style="font-size:26px; color:#14213D">
+<tr style="background:#DDE3EC"><th style="width:12%">Home</th><th style="width:16%; text-align:right">5 % pretrained</th><th style="width:16%; text-align:right">5 % scratch</th><th style="width:12%; text-align:right">Gain</th><th style="width:16%; text-align:right">30 % pretrained</th><th style="width:16%; text-align:right">30 % scratch</th><th style="width:12%; text-align:right">Gain</th></tr>
+<tr><td>uci_b</td><td style="text-align:right">0.705 ± 0.022</td><td style="text-align:right">0.703 ± 0.008</td><td style="text-align:right; color:#1F5A96">+0.002</td><td style="text-align:right">0.695 ± 0.002</td><td style="text-align:right">0.708 ± 0.012</td><td style="text-align:right; color:#A4520F">−0.013</td></tr>
+<tr><td>hh101</td><td style="text-align:right">0.714 ± 0.015</td><td style="text-align:right">0.635 ± 0.014</td><td style="text-align:right; color:#1F5A96">+0.079</td><td style="text-align:right">0.649 ± 0.016</td><td style="text-align:right">0.616 ± 0.021</td><td style="text-align:right; color:#1F5A96">+0.033</td></tr>
+<tr><td>hh103</td><td style="text-align:right">0.670 ± 0.005</td><td style="text-align:right">0.610 ± 0.009</td><td style="text-align:right; color:#1F5A96">+0.060</td><td style="text-align:right">0.680 ± 0.007</td><td style="text-align:right">0.621 ± 0.003</td><td style="text-align:right; color:#1F5A96">+0.059</td></tr>
+<tr><td>hh105</td><td style="text-align:right">0.581 ± 0.005</td><td style="text-align:right">0.534 ± 0.003</td><td style="text-align:right; color:#1F5A96">+0.047</td><td style="text-align:right">0.530 ± 0.003</td><td style="text-align:right">0.498 ± 0.004</td><td style="text-align:right; color:#1F5A96">+0.032</td></tr>
+<tr><td>hh110</td><td style="text-align:right">0.650 ± 0.015</td><td style="text-align:right">0.576 ± 0.010</td><td style="text-align:right; color:#1F5A96">+0.074</td><td style="text-align:right">0.607 ± 0.019</td><td style="text-align:right">0.554 ± 0.016</td><td style="text-align:right; color:#1F5A96">+0.053</td></tr>
+<tr><td>hh119</td><td style="text-align:right">0.573 ± 0.026</td><td style="text-align:right">0.509 ± 0.022</td><td style="text-align:right; color:#1F5A96">+0.064</td><td style="text-align:right">0.527 ± 0.016</td><td style="text-align:right">0.499 ± 0.022</td><td style="text-align:right; color:#1F5A96">+0.028</td></tr>
+<tr><td>hh122</td><td style="text-align:right">0.653 ± 0.003</td><td style="text-align:right">0.608 ± 0.007</td><td style="text-align:right; color:#1F5A96">+0.045</td><td style="text-align:right">0.600 ± 0.008</td><td style="text-align:right">0.585 ± 0.006</td><td style="text-align:right; color:#1F5A96">+0.015</td></tr>
+<tr style="background:#DDE3EC"><td>Mean</td><td style="text-align:right">0.649</td><td style="text-align:right">0.597</td><td style="text-align:right; color:#1F5A96">+0.053</td><td style="text-align:right">0.613</td><td style="text-align:right">0.583</td><td style="text-align:right; color:#1F5A96">+0.030</td></tr>
+</table>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 14 · Multiset F1, mean ± std over 3 contiguous folds</p>
+<aside>Pretraining helps on 6 of 7 homes at both label amounts. Here UCI B is the exception, not the driver: without it the gain is +0.061 and +0.037.</aside>
+</section>
+</div>
+<div class="frame" data-n="15">
+<section id="ucib" data-transition="fade" style="background:#F7F6F2; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">Paper vs this work · the one shared home</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">UCI Home B against the paper</h2>
+</div>
+<div style="display:flex; gap:64px; align-items:start">
+<div style="flex:3; display:flex; flex-direction:column; gap:16px">
+<p style="font-size:24px; color:#3F4A5A">Each cell: pretrained / from scratch</p>
+<table style="font-size:28px; color:#14213D">
+<tr style="background:#DDE3EC"><th style="width:36%">Setting</th><th style="width:32%; text-align:right">Paper</th><th style="width:32%; text-align:right">Ours</th></tr>
+<tr><td>ADL · 5 %</td><td style="text-align:right">0.38 / 0.30</td><td style="text-align:right">0.45 / 0.25</td></tr>
+<tr><td>ADL · 30 %</td><td style="text-align:right">0.60 / 0.36</td><td style="text-align:right">0.57 / 0.29</td></tr>
+<tr><td>Next-30 · 5 %</td><td style="text-align:right">0.76 / 0.53</td><td style="text-align:right">0.71 / 0.70</td></tr>
+<tr><td>Next-30 · 30 %</td><td style="text-align:right">0.90 / 0.65</td><td style="text-align:right">0.70 / 0.71</td></tr>
+</table>
+</div>
+<div style="flex:2; display:flex; flex-direction:column; gap:24px">
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A"><b>ADL follows the paper's pattern.</b> Gain +0.20 / +0.28, against the paper's +0.08 / +0.24.</p>
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A"><b>The Next-30 gain does not reproduce.</b> The paper gains about +0.24; our from-scratch model already scores 0.70.</p>
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A"><b>Folds differ.</b> Random folds leak near-copies of test windows; on our from-scratch ADL they add about 0.12.</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 15 · Paper: 5-fold CV · Ours: 3 contiguous folds · Two decimals for comparison</p>
+<aside>UCI Home B is the only test home in both the paper and this work, so it is the only direct comparison. Even here, fold protocol and pretraining data differ. Random folds raised our from-scratch ADL at 30 % from 0.28 to 0.40, close to the paper's 0.36.</aside>
+</section>
+</div>
+<div class="frame" data-n="16">
+<section id="limits" data-transition="fade" style="background:#EDF0F4; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#A4520F">Limitations</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">What these results do not show</h2>
+</div>
+<div style="display:flex; gap:64px; align-items:start">
+<div style="flex:1; display:flex; flex-direction:column; gap:16px">
+<h3 style="font-size:32px; font-weight:600; line-height:1.2">Setup</h3>
+<ul style="font-size:26px; line-height:1.45; color:#3F4A5A">
+<li>Not directly comparable to the paper: 6 of 7 test homes differ, and the 2025 CASAS release merges sensors per room.</li>
+<li>Independent code: 28.6M vs 36.1M parameters, and many settings are our guesses.</li>
+<li>Our pretraining game adds six changes, so this is a modified DomusFM, not an exact copy of the paper's recipe.</li>
+<li>Only ADL and Next-30, at 5 % and 30 % labels. No Next-10, clustering or other baselines.</li>
+</ul>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:16px">
+<h3 style="font-size:32px; font-weight:600; line-height:1.2">Findings</h3>
+<ul style="font-size:26px; line-height:1.45; color:#3F4A5A">
+<li>A single pretraining run and 3 folds per home. Differences under about 0.03 on one home are noise.</li>
+<li>UCI Home B drives much of the ADL gain. Without it: +0.055 and +0.022.</li>
+<li>The six changes were applied together; we don't yet know which ones matter.</li>
+<li>Embedding spread (z_std) sat at exactly 0.088 from step 1,000 on; check it before trusting it.</li>
+<li>ADL is still only about 0.5 weighted F1.</li>
+</ul>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 16</p>
+<aside>Test sets are also subsampled to at most 20,000 windows per fold. Pretraining timing is not representative: a game shared the GPU for most of the run.</aside>
+</section>
+</div>
+<div class="frame" data-n="17">
+<section id="lr1" data-transition="fade" style="background:#F7F6F2; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">DomusFM limitations → HomeFM remedies · 1 of 3</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Limits on what it can answer</h2>
+</div>
+<table style="font-size:24px; color:#14213D">
+<tr style="background:#DDE3EC"><th style="width:21%">Limitation</th><th style="width:29%">What goes wrong</th><th style="width:31%">HomeFM remedy</th><th style="width:19%">Status</th></tr>
+<tr><td>L1 · Closed label set</td><td>Can only name activities it was shown examples of</td><td>Link sensor activity to words, so any activity can be described</td><td>Designed; text alignment built</td></tr>
+<tr><td>L5 · No start or end</td><td>Cannot count "cooked 3 times" or see two things at once</td><td>Several tags at once, start and end detection, counting rules</td><td>Designed</td></tr>
+<tr><td>L6 · No anomaly output</td><td>Cannot say "this is unusual" or "this sensor is broken"</td><td>Surprise score, anomaly and device-health engines</td><td>Surprise score built; engines designed</td></tr>
+<tr><td>L7 · No timing</td><td>Knows what comes next, not when</td><td>Predicts each next event with a range of likely times</td><td>Head built; overdue checks designed</td></tr>
+<tr><td>L8 · Not searchable</td><td>Its knowledge cannot be searched with a question</td><td>A "map of meanings" shared by minutes and sentences</td><td>Designed</td></tr>
+</table>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 17 · Source: docs/LIMITATIONS_AND_REMEDIES.md</p>
+<aside>L1 and L8 share one remedy: linking sensor activity to words. L6 and L7 share another: predicting what happens next and when. Built means implemented and tested on small data; designed means specified in DESIGN.md but not yet built.</aside>
+</section>
+</div>
+<div class="frame" data-n="18">
+<section id="lr2" data-transition="fade" style="background:#F7F6F2; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">DomusFM limitations → HomeFM remedies · 2 of 3</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Limits on what it can see</h2>
+</div>
+<table style="font-size:24px; color:#14213D">
+<tr style="background:#DDE3EC"><th style="width:21%">Limitation</th><th style="width:29%">What goes wrong</th><th style="width:31%">HomeFM remedy</th><th style="width:19%">Status</th></tr>
+<tr><td>L2 · On/off only</td><td>Sees "fridge ON", not "fridge draws 180 W"</td><td>Keep real numbers as input</td><td>Input built; device health designed</td></tr>
+<tr><td>L3 · 30-event window</td><td>Memory is sometimes 2 minutes, sometimes 6 hours, never weeks</td><td>1-minute steps, hours of context, daily summaries</td><td>Minutes built; days designed</td></tr>
+<tr><td>L4 · One person assumed</td><td>Cannot tell people apart or count them</td><td>Person cards, identity clues, per-room counts</td><td>Designed</td></tr>
+<tr><td>L9 · No sound or camera</td><td>Cannot hear a baby cry or see a parcel</td><td>On-hub sound and camera detectors send short tags</td><td>Designed; event format built</td></tr>
+</table>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 18 · Source: docs/LIMITATIONS_AND_REMEDIES.md</p>
+<aside>DomusFM turns every sensor into ON/OFF events and remembers the last 30 events, however long they took. HomeFM keeps real values, reads in 1-minute steps, and adds daily summaries for long-range habits.</aside>
+</section>
+</div>
+<div class="frame" data-n="19">
+<section id="lr3" data-transition="fade" style="background:#F7F6F2; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">DomusFM limitations → HomeFM remedies · 3 of 3</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Limits on how it learns</h2>
+</div>
+<table style="font-size:24px; color:#14213D">
+<tr style="background:#DDE3EC"><th style="width:21%">Limitation</th><th style="width:29%">What goes wrong</th><th style="width:31%">HomeFM remedy</th><th style="width:19%">Status</th></tr>
+<tr><td>L10 · Small, old data</td><td>Never saw smart locks, cameras or robot vacuums</td><td>Many more homes, a simulator, pilot and donated homes</td><td>84 homes built; rest designed</td></tr>
+<tr><td>L11 · Game too easy</td><td>Learns sensor tricks instead of behaviour</td><td>Three harder, more useful practice games</td><td>Games built on small data; corpus run next</td></tr>
+</table>
+<div style="display:flex; gap:32px">
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#E3ECF7; border-radius:16px; padding:32px">
+<h3 style="font-size:32px; font-weight:600; line-height:1.2">L10 and L11 are linked</h3>
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A">More data does not help while the game is too easy. With a harder game, the same 77 homes do help.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:32px">
+<h3 style="font-size:32px; font-weight:600; line-height:1.2">We tested L11 on DomusFM</h3>
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A">The paper's game and a harder game, same model and data. Results on the next slide.</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 19 · Source: docs/LIMITATIONS_AND_REMEDIES.md</p>
+</section>
+</div>
+<div class="frame" data-n="20">
+<section id="l11" data-transition="fade" style="background:#EDF0F4; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">L11 in our own runs · same model, same 77 homes</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">An easy game hurts; a harder one helps</h2>
+</div>
+<table style="font-size:26px; color:#14213D">
+<tr style="background:#DDE3EC"><th style="width:44%">Measure</th><th style="width:28%; text-align:right">Paper's game</th><th style="width:28%; text-align:right">Harder game</th></tr>
+<tr><td>Matching loss, end of training</td><td style="text-align:right; color:#A4520F">about 0.0005</td><td style="text-align:right; color:#1F5A96">0.70–0.82</td></tr>
+<tr><td>Settings where pretraining wins</td><td style="text-align:right; color:#A4520F">6 of 28</td><td style="text-align:right; color:#1F5A96">26 of 28</td></tr>
+<tr><td>ADL gain · 5 % / 30 % labels</td><td style="text-align:right; color:#A4520F">−0.050 / −0.068</td><td style="text-align:right; color:#1F5A96">+0.076 / +0.059</td></tr>
+<tr><td>Next-30 gain · 5 % / 30 % labels</td><td style="text-align:right; color:#A4520F">−0.009 / +0.002</td><td style="text-align:right; color:#1F5A96">+0.053 / +0.030</td></tr>
+</table>
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A"><b>Tricks the paper's game allowed:</b> candidates from other homes, exact-second timestamps, one copy never hidden, no separate head for the game, nothing to predict.</p>
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A"><b>Remedies:</b> the six changes on slide 9. The from-scratch baseline barely moved, so the gain comes from the harder game.</p>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 20 · Gain = pretrained F1 − from-scratch F1, mean over 7 held-out homes</p>
+<aside>Paper's game run finished 24 September 2026; harder game run finished 25 September 2026. With the paper's game, pretraining was worse than training from scratch on 6 of 7 homes for activity recognition. Settings where pretraining wins, paper's game: ADL 1 + 1, Next-30 1 + 3 = 6 of 28.</aside>
+</section>
+</div>
+<div class="frame" data-n="21">
+<section id="games" data-transition="fade" style="background:#EDF0F4; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">HomeFM's remedy for L11</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Three harder practice games</h2>
+</div>
+<div style="display:flex; gap:32px; align-items:stretch">
+<div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:36px">
+<p style="font-size:24px; font-weight:600; color:#2F6FB0">Game 1</p>
+<h3 style="font-size:30px; font-weight:600; line-height:1.2">What happens next, and when?</h3>
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A">Predict the next event and the time until it. The future is unseen, so the model must learn routines. Also gives the surprise score (L6) and timing (L7).</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:36px">
+<p style="font-size:24px; font-weight:600; color:#2F6FB0">Game 2</p>
+<h3 style="font-size:30px; font-weight:600; line-height:1.2">Hide a big chunk, guess its meaning</h3>
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A">Hide 10 minutes, a room or a device type, and predict what it meant. No ON/OFF partner or timestamp is left to copy.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:36px">
+<p style="font-size:24px; font-weight:600; color:#2F6FB0">Game 3</p>
+<h3 style="font-size:30px; font-weight:600; line-height:1.2">Match minutes with sentences</h3>
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A">Pair minutes with descriptions, allowing many right answers, so two nights of sleep end up together (L1, L8).</p>
+</div>
+</div>
+<p style="font-size:26px; line-height:1.4; color:#14213D; background:#E3ECF7; border-radius:12px; padding:24px 32px">Built and tested on small data. Next: HomeFM against the fixed DomusFM on the same 77 homes. The DomusFM "fill in the blanks" change is a small version of game 2.</p>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 21 · Details: docs/LIMITATIONS_AND_REMEDIES.md (L11), docs/DESIGN.md §8</p>
+<aside>Also carried over from the DomusFM fix into HomeFM training: batches drawn from a few homes at a time, gentler fine-tuning, and loss health checks. HomeFM must now beat the fixed DomusFM: mean activity F1 0.517 / 0.529 and Next-30 F1 0.649 / 0.613 at 5 % / 30 % labels.</aside>
+</section>
+</div>
+<div class="frame" data-n="22">
+<section id="nextsteps" data-transition="fade" style="background:#F7F6F2; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">Next steps</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">What comes next</h2>
+</div>
+<div style="display:flex; gap:32px; align-items:stretch">
+<div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#FCFCFB; border:1px solid #D5D9E0; border-top:6px solid #2F6FB0; border-radius:16px; padding:40px">
+<p style="font-size:24px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:#1F5A96">Planned</p>
+<h3 style="font-size:32px; font-weight:600; line-height:1.2">Compare against HomeFM</h3>
+<p style="font-size:28px; line-height:1.4; color:#3F4A5A">Run strong-masking DomusFM, and HomeFM at 8.0M and at a size-matched 28.6M, on this same protocol.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#FCFCFB; border:1px solid #D5D9E0; border-top:6px solid #2F6FB0; border-radius:16px; padding:40px">
+<p style="font-size:24px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:#1F5A96">Planned</p>
+<h3 style="font-size:32px; font-weight:600; line-height:1.2">Ablate the six changes</h3>
+<p style="font-size:28px; line-height:1.4; color:#3F4A5A">Turn each change off in turn to see which ones carry the gain and which can go.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:40px">
+<p style="font-size:24px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:#5F6B7A">Suggested</p>
+<h3 style="font-size:32px; font-weight:600; line-height:1.2">Harden the numbers</h3>
+<p style="font-size:28px; line-height:1.4; color:#3F4A5A">Repeat runs with new seeds, look into the flat z_std, and add the paper's missing tasks and baselines.</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 22 · Configs: homefm_corpus.yaml (8.0M), homefm_corpus_384.yaml (28.6M)</p>
+</section>
+</div>
+<div class="frame" data-n="23">
+<section id="close" data-transition="fade" style="background:#14213D; color:#F7F6F2; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#8FB4E0">Takeaways</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Three things to remember</h2>
+</div>
+<div style="display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; gap:40px; align-items:start">
+<p style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1; color:#8FB4E0; width:64px">1</p>
+<p style="font-size:40px; line-height:1.3; color:#E6ECF5; width:1500px">Pretrained on 77 homes, DomusFM beats training from scratch in 26 of 28 settings.</p>
+</div>
+<div style="display:flex; gap:40px; align-items:start">
+<p style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1; color:#8FB4E0; width:64px">2</p>
+<p style="font-size:40px; line-height:1.3; color:#E6ECF5; width:1500px">The gain is largest when labels are scarce: +0.076 activity F1 with 5 % labels.</p>
+</div>
+<div style="display:flex; gap:40px; align-items:start">
+<p style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1; color:#8FB4E0; width:64px">3</p>
+<p style="font-size:40px; line-height:1.3; color:#E6ECF5; width:1500px">HomeFM targets DomusFM's 11 limitations; its first test is to beat this fixed DomusFM.</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#9FB0C8">DomusFM reproduction · 23 · Full results: results/domusfm_corpus_fixed/</p>
+</section>
+</div>
+</div>
+<script>
+  // Scale each 1920x1080 slide to its frame, and show speaker notes under it.
+  document.querySelectorAll('.frame').forEach(f => {
+    const a = f.querySelector('aside');
+    if (a) { const n = document.createElement('p'); n.className = 'notes'; n.textContent = 'Notes: ' + a.textContent; f.after(n); }
+  });
+  function fit() {
+    document.querySelectorAll('.frame').forEach(f => {
+      f.querySelector('section').style.transform = 'scale(' + f.clientWidth / 1920 + ')';
+    });
+  }
+  addEventListener('resize', fit); fit();
+</script>
+</body>
+</html>

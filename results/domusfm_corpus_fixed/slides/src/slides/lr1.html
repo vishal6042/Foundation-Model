@@ -1,0 +1,16 @@
+<section id="lr1" data-transition="fade" style="background:#F7F6F2; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">DomusFM limitations → HomeFM remedies · 1 of 3</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Limits on what it can answer</h2>
+</div>
+<table style="font-size:24px; color:#14213D">
+<tr style="background:#DDE3EC"><th style="width:21%">Limitation</th><th style="width:29%">What goes wrong</th><th style="width:31%">HomeFM remedy</th><th style="width:19%">Status</th></tr>
+<tr><td>L1 · Closed label set</td><td>Can only name activities it was shown examples of</td><td>Link sensor activity to words, so any activity can be described</td><td>Designed; text alignment built</td></tr>
+<tr><td>L5 · No start or end</td><td>Cannot count "cooked 3 times" or see two things at once</td><td>Several tags at once, start and end detection, counting rules</td><td>Designed</td></tr>
+<tr><td>L6 · No anomaly output</td><td>Cannot say "this is unusual" or "this sensor is broken"</td><td>Surprise score, anomaly and device-health engines</td><td>Surprise score built; engines designed</td></tr>
+<tr><td>L7 · No timing</td><td>Knows what comes next, not when</td><td>Predicts each next event with a range of likely times</td><td>Head built; overdue checks designed</td></tr>
+<tr><td>L8 · Not searchable</td><td>Its knowledge cannot be searched with a question</td><td>A "map of meanings" shared by minutes and sentences</td><td>Designed</td></tr>
+</table>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 17 · Source: docs/LIMITATIONS_AND_REMEDIES.md</p>
+<aside>L1 and L8 share one remedy: linking sensor activity to words. L6 and L7 share another: predicting what happens next and when. Built means implemented and tested on small data; designed means specified in DESIGN.md but not yet built.</aside>
+</section>

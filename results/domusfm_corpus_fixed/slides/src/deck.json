@@ -1,0 +1,75 @@
+{
+  "v": 4,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-09-28T09:00:00Z"
+  },
+  "title": "DomusFM Reproduction: Results",
+  "cover": "cover",
+  "order": [
+    "cover",
+    "takeaway",
+    "intro",
+    "model",
+    "tasks",
+    "setup",
+    "params",
+    "paper",
+    "fixes",
+    "loss",
+    "gain",
+    "scores",
+    "adl",
+    "next30",
+    "ucib",
+    "limits",
+    "lr1",
+    "lr2",
+    "lr3",
+    "l11",
+    "games",
+    "nextsteps",
+    "close"
+  ],
+  "sections": {
+    "s1": {
+      "description": "What DomusFM is, how it works, and how it is tested",
+      "start": "cover"
+    },
+    "s2": {
+      "description": "Data, parameters, and how this reproduction differs from the paper",
+      "start": "setup"
+    },
+    "s4": {
+      "description": "The pretraining game we use, and how training behaved",
+      "start": "fixes"
+    },
+    "s5": {
+      "description": "Results, overall, per home, and against the paper",
+      "start": "gain"
+    },
+    "s6": {
+      "description": "Limitations of this experiment",
+      "start": "limits"
+    },
+    "s7": {
+      "description": "DomusFM's limitations and HomeFM's remedies, with our own evidence for L11",
+      "start": "lr1"
+    },
+    "s8": {
+      "description": "Next steps and takeaways",
+      "start": "nextsteps"
+    }
+  },
+  "faces": {
+    "source-serif-4": {
+      "family": "Source Serif 4",
+      "href": "https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400..700&display=swap"
+    },
+    "ibm-plex-sans": {
+      "family": "IBM Plex Sans",
+      "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+    }
+  },
+  "designSystems": []
+}

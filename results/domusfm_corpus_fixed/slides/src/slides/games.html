@@ -1,0 +1,26 @@
+<section id="games" data-transition="fade" style="background:#EDF0F4; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">HomeFM's remedy for L11</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Three harder practice games</h2>
+</div>
+<div style="display:flex; gap:32px; align-items:stretch">
+<div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:36px">
+<p style="font-size:24px; font-weight:600; color:#2F6FB0">Game 1</p>
+<h3 style="font-size:30px; font-weight:600; line-height:1.2">What happens next, and when?</h3>
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A">Predict the next event and the time until it. The future is unseen, so the model must learn routines. Also gives the surprise score (L6) and timing (L7).</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:36px">
+<p style="font-size:24px; font-weight:600; color:#2F6FB0">Game 2</p>
+<h3 style="font-size:30px; font-weight:600; line-height:1.2">Hide a big chunk, guess its meaning</h3>
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A">Hide 10 minutes, a room or a device type, and predict what it meant. No ON/OFF partner or timestamp is left to copy.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#FCFCFB; border:1px solid #D5D9E0; border-radius:16px; padding:36px">
+<p style="font-size:24px; font-weight:600; color:#2F6FB0">Game 3</p>
+<h3 style="font-size:30px; font-weight:600; line-height:1.2">Match minutes with sentences</h3>
+<p style="font-size:26px; line-height:1.4; color:#3F4A5A">Pair minutes with descriptions, allowing many right answers, so two nights of sleep end up together (L1, L8).</p>
+</div>
+</div>
+<p style="font-size:26px; line-height:1.4; color:#14213D; background:#E3ECF7; border-radius:12px; padding:24px 32px">Built and tested on small data. Next: HomeFM against the fixed DomusFM on the same 77 homes. The DomusFM "fill in the blanks" change is a small version of game 2.</p>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 21 · Details: docs/LIMITATIONS_AND_REMEDIES.md (L11), docs/DESIGN.md §8</p>
+<aside>Also carried over from the DomusFM fix into HomeFM training: batches drawn from a few homes at a time, gentler fine-tuning, and loss health checks. HomeFM must now beat the fixed DomusFM: mean activity F1 0.517 / 0.529 and Next-30 F1 0.649 / 0.613 at 5 % / 30 % labels.</aside>
+</section>

@@ -1,0 +1,15 @@
+<section id="lr2" data-transition="fade" style="background:#F7F6F2; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">DomusFM limitations → HomeFM remedies · 2 of 3</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Limits on what it can see</h2>
+</div>
+<table style="font-size:24px; color:#14213D">
+<tr style="background:#DDE3EC"><th style="width:21%">Limitation</th><th style="width:29%">What goes wrong</th><th style="width:31%">HomeFM remedy</th><th style="width:19%">Status</th></tr>
+<tr><td>L2 · On/off only</td><td>Sees "fridge ON", not "fridge draws 180 W"</td><td>Keep real numbers as input</td><td>Input built; device health designed</td></tr>
+<tr><td>L3 · 30-event window</td><td>Memory is sometimes 2 minutes, sometimes 6 hours, never weeks</td><td>1-minute steps, hours of context, daily summaries</td><td>Minutes built; days designed</td></tr>
+<tr><td>L4 · One person assumed</td><td>Cannot tell people apart or count them</td><td>Person cards, identity clues, per-room counts</td><td>Designed</td></tr>
+<tr><td>L9 · No sound or camera</td><td>Cannot hear a baby cry or see a parcel</td><td>On-hub sound and camera detectors send short tags</td><td>Designed; event format built</td></tr>
+</table>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 18 · Source: docs/LIMITATIONS_AND_REMEDIES.md</p>
+<aside>DomusFM turns every sensor into ON/OFF events and remembers the last 30 events, however long they took. HomeFM keeps real values, reads in 1-minute steps, and adds daily summaries for long-range habits.</aside>
+</section>

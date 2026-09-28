@@ -157,7 +157,8 @@ def get_pretrained(cfg, ctor, text, pool, ckpt: Path, device):
     print(f"[domusfm] pretraining on {len(pool)} datasets, {sum(d.n_events for d in pool):,} events, "
           f"{n_windows:,} windows", flush=True)
     loader = pretrain_loader([DomusWindows(d, text, W, pt["stride"]) for d in pool], pt["batch_size"],
-                             pt["batch_size"] * (pt["steps_phase1"] + pt["steps_phase2"]), pt.get("num_workers", 0))
+                             pt["batch_size"] * (pt["steps_phase1"] + pt["steps_phase2"]), pt.get("num_workers", 0),
+                             pt.get("homes_per_batch"))
     model = ctor().to(device)
     progress = ckpt.with_name(ckpt.stem + "_progress.pt")  # mid-pretraining checkpoint, removed when done
     history = pretrain(model, loader, pt, device, log=lambda m: print(m, flush=True), ckpt_path=progress)

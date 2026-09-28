@@ -1,0 +1,41 @@
+# Corpus-scale DomusFM with the collapse fixes (docs/DOMUSFM_REPRODUCTION.md, "Why pretraining did not help").
+#   python -m homefm.baselines.domusfm.run --overlay configs/domusfm_corpus_fixed.yaml
+# Same data, held-out homes, model and fine-tuning protocol as configs/domusfm_corpus.yaml; only the
+# pretraining game and the fine-tuning learning rates change. Not in the paper.
+out_dir: runs/domusfm_corpus_fixed
+pretrain_mode: shared
+held_out: [uci_b, hh101, hh103, hh105, hh110, hh119, hh122]
+ablation_no_pretrain: true
+datasets:
+  source: list
+  cache_dir: data/cache/casas
+  list:
+    - {kind: uci_adl, id: uci_b, path: "data/raw/uci/UCI ADL Binary Dataset", home: B}
+    - {kind: casas_fast, id: hh101, path: data/raw/casas/labeled/hh101.csv}
+    - {kind: casas_fast, id: hh103, path: data/raw/casas/labeled/hh103.csv}
+    - {kind: casas_fast, id: hh105, path: data/raw/casas/labeled/hh105.csv}
+    - {kind: casas_fast, id: hh110, path: data/raw/casas/labeled/hh110.csv}
+    - {kind: casas_fast, id: hh119, path: data/raw/casas/labeled/hh119.csv}
+    - {kind: casas_fast, id: hh122, path: data/raw/casas/labeled/hh122.csv}
+    - {kind: casas_fast_glob, path: "data/raw/casas/labeled/*.csv", pretrain_only: true}
+    - {kind: casas_fast, id: milan, path: data/raw/casas/data/milan.csv, pretrain_only: true}
+    - {kind: casas_fast, id: aruba, path: data/raw/casas/data/aruba.csv, pretrain_only: true}
+pretrain:
+  steps_phase1: 20000
+  steps_phase2: 20000
+  log_every: 1000
+  homes_per_batch: 4           # 32 windows per home: negatives can no longer be told apart by sensor names
+  mask_both_views: true
+  attr_mask_p: 0.4
+  event_mask_p: 0.4
+  temperature: 0.2
+  time_jitter_s: 900           # ±15 min: breaks the exact-second fingerprint, keeps time of day
+  projector: true
+  mlm_weight: 1.0              # predict the hidden attributes: cannot be solved by recognising the window
+finetune:
+  tasks: [adl, next30]
+  train_pcts: [0.05, 0.30]
+  folds: 3
+  backbone_lr: 5.0e-5          # move pretrained weights gently...
+  head_lr: 1.0e-3              # ...while the fresh head learns fast
+  warmup_frac: 0.1

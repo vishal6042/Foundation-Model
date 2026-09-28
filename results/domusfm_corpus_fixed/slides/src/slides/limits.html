@@ -1,0 +1,29 @@
+<section id="limits" data-transition="fade" style="background:#EDF0F4; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#A4520F">Limitations</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">What these results do not show</h2>
+</div>
+<div style="display:flex; gap:64px; align-items:start">
+<div style="flex:1; display:flex; flex-direction:column; gap:16px">
+<h3 style="font-size:32px; font-weight:600; line-height:1.2">Setup</h3>
+<ul style="font-size:26px; line-height:1.45; color:#3F4A5A">
+<li>Not directly comparable to the paper: 6 of 7 test homes differ, and the 2025 CASAS release merges sensors per room.</li>
+<li>Independent code: 28.6M vs 36.1M parameters, and many settings are our guesses.</li>
+<li>Our pretraining game adds six changes, so this is a modified DomusFM, not an exact copy of the paper's recipe.</li>
+<li>Only ADL and Next-30, at 5 % and 30 % labels. No Next-10, clustering or other baselines.</li>
+</ul>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:16px">
+<h3 style="font-size:32px; font-weight:600; line-height:1.2">Findings</h3>
+<ul style="font-size:26px; line-height:1.45; color:#3F4A5A">
+<li>A single pretraining run and 3 folds per home. Differences under about 0.03 on one home are noise.</li>
+<li>UCI Home B drives much of the ADL gain. Without it: +0.055 and +0.022.</li>
+<li>The six changes were applied together; we don't yet know which ones matter.</li>
+<li>Embedding spread (z_std) sat at exactly 0.088 from step 1,000 on; check it before trusting it.</li>
+<li>ADL is still only about 0.5 weighted F1.</li>
+</ul>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 16</p>
+<aside>Test sets are also subsampled to at most 20,000 windows per fold. Pretraining timing is not representative: a game shared the GPU for most of the run.</aside>
+</section>

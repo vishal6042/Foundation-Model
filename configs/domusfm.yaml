@@ -38,6 +38,12 @@ pretrain:
   event_mask_p: 0.15
   temperature: 0.07
   log_every: 500
+  # Fixes for the collapse on real data (not in the paper; defaults = paper). See configs/domusfm_corpus_fixed.yaml.
+  homes_per_batch: null        # null = mix homes freely; k = each batch from k homes (same-home hard negatives)
+  mask_both_views: false       # mask both views independently instead of comparing with the clean window
+  time_jitter_s: 0             # shift each view's clock by up to ± this many seconds (breaks the timestamp fingerprint)
+  projector: false             # MLP projection head for InfoNCE, discarded after pretraining
+  mlm_weight: 0.0              # weight of the masked-attribute prediction loss
 
 finetune:
   tasks: [adl, next10, next30] # [paper]
@@ -49,4 +55,7 @@ finetune:
   eval_batch_size: 512
   lr: 1.0e-4
   weight_decay: 0.01
+  backbone_lr: 1.0e-4          # not in the paper: separate LRs and linear warmup; defaults = paper
+  head_lr: 1.0e-4
+  warmup_frac: 0.0
   max_test_windows: 20000      # subsample test windows for speed; null = all

@@ -25,13 +25,13 @@ Each limitation answers the same questions:
 | [L8](#l8--its-knowledge-cannot-be-searched-with-words) | Not searchable by text | Its knowledge cannot be searched with a question | A "map of meanings" shared by minutes and sentences | 📐 |
 | [L9](#l9--it-cannot-hear-or-see) | No sound or camera | Cannot hear a baby cry or see a parcel | On-hub sound and camera detectors send short tags | 📐 (event format ✅) |
 | [L10](#l10--it-learned-from-a-small-old-set-of-homes) | Small, old training data | Never saw smart locks, cameras or robot vacuums | Many more homes, a simulator, pilot and donated homes | ✅ 84 homes · 📐 rest |
-| [L11](#l11--its-practice-game-is-too-easy) | Practice game too easy | Learns sensor tricks instead of behaviour | Three harder, more useful practice games | ✅ A–F · 📐 corpus run, G |
+| [L11](#l11--its-practice-game-is-too-easy) | Practice game too easy | Learns sensor tricks instead of behaviour | Three harder, more useful practice games | ✅ A–F · ✅ harder DomusFM game tested · 📐 HomeFM corpus run, G |
 
 Several limitations share one remedy:
 
 - **L1 and L8** are both fixed by linking sensor activity to words. L1 is about *naming* what is happening now, and L8 is about *searching* the past.
 - **L6 and L7** both come from one skill: predicting what happens next and when.
-- **L10 and L11** are connected. Our own runs show that more data does not help while the practice game stays too easy.
+- **L10 and L11** are connected. Our own runs show that more data does not help while the practice game stays too easy, and that the same data does help once the game is made harder.
 
 ---
 
@@ -671,7 +671,7 @@ It is like a driver who only ever practised in one small, quiet town and is then
 
 ### More data alone does not help (our own runs)
 
-The obvious fix is "use more homes", so we tested it. We pretrained DomusFM on **77 homes and 27 million events**, far more than the paper's corpus. On the test homes so far, the pretrained model is **no better, and mostly worse, than a model with no pretraining at all** (full table in [L11](#what-our-own-runs-show)). More data does not help while the practice game is too easy. **Data and the training game have to improve together.**
+The obvious fix is "use more homes", so we tested it. We pretrained DomusFM on **77 homes and 27 million events**, far more than the paper's corpus. With the paper's practice game, the pretrained model is **worse than a model with no pretraining at all** on 6 of 7 test homes for activity recognition (full table in [L11](#what-our-own-runs-show)). With a harder game and the same 77 homes, pretraining helps in 26 of 28 settings ([L11](#testing-the-remedy-on-domusfm-itself)). More data does not help while the practice game is too easy. **Data and the training game have to improve together.**
 
 ### What HomeFM does differently
 
@@ -741,29 +741,78 @@ Home sensor data is different from photos. Its timestamps, paired ON/OFF signals
 
 ### What our own runs show
 
-**1. The game is won almost immediately.** The loss (lower means winning more easily) falls to about 0.001 within the first 1,000 of 40,000 practice steps, and then barely moves. This happened with a handful of homes and again with 77 homes:
+We pretrained DomusFM with the paper's game on **77 homes and 27.3 million events**, then tested it on 7 homes it had never seen (run 1, finished 2026-09-24). Each test home is fine-tuned with 5 % or 30 % of its labels and scored over 3 time-contiguous folds.
+
+**1. The game is won almost immediately.** The loss (lower means winning more easily) starts at 2.35 and falls to about 0.001 within the first 1,000 of 40,000 practice steps. It then barely moves, in both phases:
 
 ```
-step     0:  loss 0.03
-step  1000:  loss 0.001    ← already "won"
-step 19000:  loss 0.0005   ← nothing more to learn for 18,000 steps
+phase 1, step      0:  loss 2.35
+phase 1, step  1,000:  loss 0.001    ← already "won"
+phase 1, step  5,000:  loss 0.0005
+phase 2, step 19,000:  loss 0.0005   ← nothing more to learn for the rest of the run
 ```
 
-**2. Practising this game can make the model worse at real tasks.** Results on the held-out homes from the 77-home run (run 1, 2026-09-24; 3 of 7 homes finished, the rest are still running). Higher is better, ± is the spread across 3 folds:
+**2. Practising this game makes the model worse at real tasks.** Each cell shows the model pretrained on 77 homes / the same model with no pretraining. Higher is better.
 
-| Test home | Task | Pretrained on 77 homes | No pretraining | Difference |
+| Test home | Activity, 5 % labels | Activity, 30 % labels | Next 30 events, 5 % | Next 30 events, 30 % |
 |---|---|---|---|---|
-| UCI B | Activity, 5 % labels | 0.25 ± 0.03 | 0.22 ± 0.06 | +0.04 |
-| UCI B | Activity, 30 % labels | 0.28 ± 0.03 | 0.26 ± 0.05 | +0.02 |
-| UCI B | Next 30 events, 5 % / 30 % | 0.70 / 0.70 | 0.71 / 0.71 | −0.01 |
-| hh101 | Activity, 5 % labels | 0.49 ± 0.02 | **0.56** ± 0.01 | **−0.07** |
-| hh101 | Activity, 30 % labels | 0.49 ± 0.01 | **0.55** ± 0.02 | **−0.06** |
-| hh101 | Next 30 events, 5 % / 30 % | 0.64 / 0.63 | 0.65 / 0.63 | −0.01 / 0.00 |
-| hh103 | Activity, 5 % labels | 0.54 ± 0.02 | **0.68** ± 0.01 | **−0.14** |
-| hh103 | Activity, 30 % labels | 0.59 ± 0.01 | **0.73** ± 0.01 | **−0.14** |
-| hh103 | Next 30 events, 5 % / 30 % | 0.61 / 0.62 | 0.61 / 0.61 | 0.00 / +0.01 |
+| UCI B | 0.25 / 0.21 | 0.28 / 0.26 | 0.69 / 0.71 | 0.70 / 0.71 |
+| hh101 | 0.49 / **0.56** | 0.49 / **0.55** | 0.63 / 0.65 | 0.63 / 0.63 |
+| hh103 | 0.54 / **0.68** | 0.59 / **0.73** | 0.61 / 0.61 | 0.62 / 0.61 |
+| hh105 | 0.36 / **0.41** | 0.37 / **0.44** | 0.50 / 0.52 | 0.51 / 0.51 |
+| hh110 | 0.32 / 0.33 | 0.33 / **0.38** | 0.56 / 0.59 | 0.57 / 0.55 |
+| hh119 | 0.35 / **0.41** | 0.36 / **0.45** | 0.50 / 0.49 | 0.51 / 0.50 |
+| hh122 | 0.38 / **0.43** | 0.39 / **0.47** | 0.61 / 0.61 | 0.60 / 0.61 |
+| **Mean** | 0.385 / 0.435 (**−0.050**) | 0.400 / 0.468 (**−0.068**) | 0.587 / 0.596 (−0.009) | 0.591 / 0.590 (+0.002) |
 
-In two of three homes, the pretrained model is clearly **worse** at activity recognition than a model that never practised, even with 30 % of labels. Next-event prediction shows no difference. Our best explanation is that the model learns sensor tricks (timestamp fingerprints, ON/OFF pairs) that get in the way when it later has to learn real activities. Details: [DOMUSFM_REPRODUCTION.md](DOMUSFM_REPRODUCTION.md).
+On activity recognition, the pretrained model is **worse on 6 of 7 homes** than a model that never practised, even with 30 % of labels. Only UCI B improves. Next-event prediction shows no difference.
+
+**3. The tricks it used.** Reading the code showed exactly how the game was won without understanding:
+
+| # | Trick | Why it made the game easy |
+|---|---|---|
+| 1 | Candidates from other homes | The 128 windows in a round came from about 77 different homes. The sensor names alone ruled out every wrong candidate. |
+| 2 | Timestamp fingerprint | Every event carried its exact second, and 85 % of events stayed visible. Matching copies was like matching serial numbers. |
+| 3 | One copy never hidden | One copy was the clean window, so 85 % of the damaged copy matched it exactly. |
+| 4 | No separate head for the game | The game shaped the main network itself, and fine-tuning later had to undo that. |
+| 5 | Nothing to predict | Every answer was visible, so understanding the data was never needed. |
+| 6 | One learning speed in fine-tuning | Not a trick but a weakness: the pretrained layers were changed as fast as the new, untrained output layer, which can wipe out what pretraining learned. |
+
+Details: [DOMUSFM_REPRODUCTION.md](DOMUSFM_REPRODUCTION.md), "Why pretraining did not help, and the fix".
+
+### Testing the remedy on DomusFM itself
+
+If the problem is the game, making DomusFM's own game harder should make pretraining useful. We tested this before building HomeFM's games at full scale. Run 2 (finished 2026-09-25) uses the **same model, the same 77 homes and the same 7 test homes**. Only the game and the fine-tuning speeds change:
+
+| # | Remedy | In plain words |
+|---|---|---|
+| 1 | Same-home candidates | Each round holds 4 homes × 32 windows, so sensor names give nothing away |
+| 2 | Clock jitter | Each copy's clock is shifted by up to ±15 minutes. Gaps between events and the time of day are kept, but exact-second matching no longer works |
+| 3 | Hide both copies | 40 % of both copies is hidden instead of 15 % of one, with a less strict scoring (temperature 0.2) |
+| 4 | Separate head for the game | A small extra layer plays the game and is thrown away afterwards |
+| 5 | Fill in the blanks | The model must also name the hidden device, type, room and ON/OFF state |
+| 6 | Gentler fine-tuning | Pretrained layers learn slowly, the new output layer fast, with a short warm-up. The no-pretraining model gets the same treatment |
+
+All six are in `configs/domusfm_corpus_fixed.yaml`, off by default.
+
+**The remedy worked.** The loss stayed at a healthy 0.70–0.82 for all 40,000 steps instead of collapsing, and pretraining now beats no pretraining in **26 of 28 settings** (7 homes × 2 tasks × 2 label amounts):
+
+| Setting | Gain from pretraining, run 1 | Gain from pretraining, run 2 | Homes where pretraining wins |
+|---|---|---|---|
+| Activity, 5 % labels | −0.050 | **+0.076** | 1 → 7 of 7 |
+| Activity, 30 % labels | −0.068 | **+0.059** | 1 → 6 of 7 |
+| Next 30 events, 5 % labels | −0.009 | **+0.053** | 1 → 7 of 7 |
+| Next 30 events, 30 % labels | +0.002 | **+0.030** | 3 → 6 of 7 |
+
+The no-pretraining model barely moved (activity, 5 %: 0.435 → 0.441), so the gain comes from the harder game, not from the gentler fine-tuning. Full tables: [results/domusfm_corpus_fixed/results.md](../results/domusfm_corpus_fixed/results.md).
+
+**What this means for HomeFM:**
+
+- **The diagnosis is confirmed.** The same model on the same data went from hurting to helping when only the game changed. DomusFM's weakness was the game, not the model size or the amount of data.
+- **The bar is now higher.** HomeFM must beat the *fixed* DomusFM (mean activity F1 0.517 / 0.529, next-30 F1 0.649 / 0.613 at 5 % / 30 % labels), not the run 1 model. Beating a model that pretraining made worse would prove nothing.
+- **Remedy 5 is a small version of game 2.** Both make the model predict what was hidden instead of recognising its own copy. Its success is early support for HomeFM's direction.
+- **Worth reusing in HomeFM training:** batches drawn from a few homes at a time, the gentler fine-tuning, and the health checks now in the training log (the game's loss must stay well above 0; the spread of the embeddings, `z_std`, must stay above 0).
+- **Still open:** which of the six remedies matter. They were applied together; an ablation will tell. The gain is also modest without UCI B (activity +0.055 / +0.022).
 
 ### What HomeFM does differently: three harder, more useful games
 
@@ -797,10 +846,10 @@ Each game can only be won by understanding what people are doing.
 
 ### The honest catch
 
-- **Not proven yet.** HomeFM's games are designed to be harder and more useful, but they have not yet been shown to beat DomusFM on real homes. The next step is the head-to-head run: HomeFM (games 1 + 2, variant E) against DomusFM on the same 77 homes and the same test homes.
-- **Success looks like** a loss that falls gradually instead of reaching 0.001 in minutes, and a clear gain from pretraining over no pretraining on the test homes, especially with few labels.
+- **Not proven yet.** HomeFM's games are designed to be harder and more useful, but they have not yet been shown to beat DomusFM on real homes. The next step is the head-to-head run: HomeFM (games 1 + 2, variant E) against the fixed DomusFM (run 2) on the same 77 homes and the same test homes.
+- **Success looks like** a loss that stays well above 0 instead of reaching 0.001 in minutes, and a clear gain from pretraining over no pretraining on the test homes, especially with few labels. The fixed DomusFM game now shows both, so HomeFM must also beat its scores.
 - Harder games cost more computing time, especially game 2, which runs a second copy of the model.
-- **Status:** games 1–3 (variants A–F) ✅, implemented and tested on small data. The corpus-scale comparison and variant G 📐.
+- **Status:** games 1–3 (variants A–F) ✅, implemented and tested on small data. The harder DomusFM game ✅, tested at corpus scale (run 2). The HomeFM corpus-scale comparison, the ablation of the six DomusFM remedies, and variant G 📐.
 
 ---
 

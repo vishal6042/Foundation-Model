@@ -1,0 +1,21 @@
+<section id="paper" data-transition="fade" style="background:#EDF0F4; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">Paper vs this work</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">How this differs from the paper</h2>
+</div>
+<table style="font-size:24px; color:#14213D">
+<tr style="background:#DDE3EC"><th style="width:20%">Aspect</th><th style="width:40%">Paper</th><th style="width:40%">This reproduction</th></tr>
+<tr><td>Code</td><td>Authors' implementation (not public)</td><td>Independent, from the paper text</td></tr>
+<tr><td>Model size</td><td>36.1M parameters</td><td>28.6M (unreported widths guessed)</td></tr>
+<tr><td>Test datasets</td><td>Milan, Aruba, UCI B, Kasteren A/C, MuRAL, Orange4Home</td><td>UCI B + 6 CASAS homes (others unavailable)</td></tr>
+<tr><td>Pretraining data</td><td>Leave-one-out: the other 6 datasets</td><td>Once, on 77 other homes (27.3M events)</td></tr>
+<tr><td>CASAS data</td><td>Original: one id per sensor, labelled</td><td>2025 release: sensors merged per room</td></tr>
+<tr><td>CV folds</td><td>5-fold cross-validation</td><td>3 time-contiguous folds (no leakage)</td></tr>
+<tr><td>Label amounts</td><td>5, 10, 15 and 30 %</td><td>5 and 30 %</td></tr>
+<tr><td>Tasks</td><td>ADL, Next-10, Next-30, clustering</td><td>ADL and Next-30</td></tr>
+<tr><td>Pretraining game</td><td>Masking, temperature, steps not reported</td><td>Our choices, plus a harder game (slide 9)</td></tr>
+<tr><td>Comparisons</td><td>DeepCASAS, GPT-2, Chronos, ablations</td><td>No-pretraining ablation only</td></tr>
+</table>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 8 · Only UCI Home B is directly comparable with the paper (slide 15)</p>
+<aside>In the 2025 CASAS release, Milan and Aruba have no activity labels and their sensors are merged into 9 to 10 room names, so they are used for pretraining only. Contiguous folds matter: consecutive windows share 29 of 30 events, so random folds put near-copies of test windows into training. On UCI B, random folds raised no-pretraining ADL from 0.28 to 0.40.</aside>
+</section>

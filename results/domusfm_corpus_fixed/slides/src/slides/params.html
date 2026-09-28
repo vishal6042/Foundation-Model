@@ -1,0 +1,21 @@
+<section id="params" data-transition="fade" style="background:#EDF0F4; color:#14213D; font-family:'IBM Plex Sans', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:600; letter-spacing:3px; text-transform:uppercase; color:#2F6FB0">Experimental setup</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif; font-size:72px; font-weight:600; line-height:1.1">Experimental parameters</h2>
+</div>
+<table style="font-size:24px; color:#14213D">
+<tr style="background:#DDE3EC"><th style="width:22%">Parameter</th><th style="width:48%">Setting</th><th style="width:30%">Source</th></tr>
+<tr><td>Model</td><td>28.6M params · 12 layers · 12 heads · d 384</td><td>Paper (widths guessed)</td></tr>
+<tr><td>Input window</td><td>30 events, sliding by 1</td><td>Paper</td></tr>
+<tr><td>Pretraining</td><td>20,000 + 20,000 steps, batch 128, AdamW 1e-4</td><td>Our choice (not reported)</td></tr>
+<tr><td>Batch make-up</td><td>4 homes × 32 windows</td><td style="color:#1F5A96">Our addition</td></tr>
+<tr><td>Masking</td><td>40 % of both copies</td><td style="color:#1F5A96">Our choice (not reported)</td></tr>
+<tr><td>Temperature</td><td>0.2</td><td style="color:#1F5A96">Our choice (not reported)</td></tr>
+<tr><td>Clock jitter</td><td>±15 minutes per copy</td><td style="color:#1F5A96">Our addition</td></tr>
+<tr><td>Projection head</td><td>MLP, dropped after pretraining</td><td style="color:#1F5A96">Our addition</td></tr>
+<tr><td>Extra loss</td><td>Predict hidden attributes (weight 1.0)</td><td style="color:#1F5A96">Our addition</td></tr>
+<tr><td>Fine-tuning</td><td>10 epochs, batch 64; backbone LR 5e-5, head 1e-3, 10 % warm-up</td><td>Paper (epochs) + our choice</td></tr>
+</table>
+<p style="position:absolute; left:128px; bottom:64px; width:1664px; font-size:24px; color:#5F6B7A">DomusFM reproduction · 7 · Config: configs/domusfm_corpus_fixed.yaml · Blue = our change to the paper's pretraining game</p>
+<aside>The paper does not report masking rate, temperature, pretraining length or learning rates, so those are our choices. The additions are explained on slide 9.</aside>
+</section>

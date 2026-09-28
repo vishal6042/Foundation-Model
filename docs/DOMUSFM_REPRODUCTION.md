@@ -118,7 +118,7 @@ Consecutive windows share 29 of 30 events, so random folds put near-duplicates o
 2. Pretraining corpus differs: room-level merged sensors in the 2025 CASAS release, and 5–13 sensor names per home.
 3. Unreported fine-tuning hyperparameters. A sweep on UCI B (LR 1e-4/3e-4, batch 16/64, 10/30 epochs) did not raise ADL above 0.27, so this is not the main cause.
 
-### Real datasets: run 2 (corpus-scale; paper masking done, the other two not started)
+### Real datasets: run 2 (corpus-scale; paper masking and fixed game done, the other two not started)
 
 Pretraining once on **77 homes / 27.3M events** (all labelled CASAS homes except the 7 targets, plus Milan and
 Aruba), then fine-tuning on the 7 targets (ADL and next-30; 5 % and 30 %; 3 contiguous folds).
@@ -152,6 +152,36 @@ Findings:
 2. **Pretraining makes no difference to next-30 prediction** (−0.009 and +0.002 on average).
 3. **More data does not fix it.** The earlier run with far fewer pretraining homes showed the same pattern (hh101 ADL 5 %: 0.49 vs 0.57). Scaling the corpus to 77 homes left it unchanged.
 4. The collapse of the contrastive loss to about 0.0005 fits the diagnosis in DESIGN.md §8.1 and §8.6: the "recognise your own window" game is solved through shortcuts (timestamps, untouched events, ON/OFF pairs), so it teaches features that do not help downstream and can hinder fine-tuning.
+
+#### Why pretraining did not help, and the fix
+
+The loss at step 0 is already 2.35, below chance (ln 128 = 4.85), and reaches about 0.001 by step 1,000. The game is solved through shortcuts in the code, not by learning behaviour:
+
+| # | Shortcut | Where | Fix (config key, off by default = paper) |
+|---|---|---|---|
+| 1 | Negatives from other homes. `BalancedSampler` picks a home per window, so the 128 windows in a batch come from about 77 homes, and the frozen text embeddings of sensor names alone tell them apart. | `train.py` `BalancedSampler` | `pretrain.homes_per_batch: 4`: each batch has 4 homes × 32 windows, so negatives come from the same home |
+| 2 | Timestamp fingerprint. The `sec` embedding gives the exact second of every event, and 85 % of events stay visible after masking. | `model.py` time attribute | `pretrain.time_jitter_s: 900`: each view's clock is shifted by up to ±15 min, which keeps the gaps between events and the time of day |
+| 3 | One view is the clean window, so 85 % of it matches the masked view exactly. | `pretrain()` | `pretrain.mask_both_views: true`, `attr_mask_p`/`event_mask_p: 0.4`, `temperature: 0.2` |
+| 4 | No projection head. InfoNCE at τ = 0.07 shapes the backbone itself for telling windows apart, which fine-tuning must then undo (pretrained is worse than scratch). | `pretrain()` | `pretrain.projector: true`: an MLP, discarded after pretraining |
+| 5 | Nothing to predict. Every answer is visible. | objective | `pretrain.mlm_weight: 1.0`: predict the hidden item/type/room (scored against the frozen text table, so it works across homes) and the ON/OFF status |
+| 6 | One LR for the pretrained backbone and the fresh head, with no warmup. | `finetune_and_eval` | `finetune.backbone_lr: 5e-5`, `head_lr: 1e-3`, `warmup_frac: 0.1` (also applied to the w/o-pretrain baseline) |
+
+All six are combined in `configs/domusfm_corpus_fixed.yaml`. The log now shows `contrastive`, `mlm` and `z_std` (the spread of the embeddings; near 0 means collapse).
+
+Sanity check on 6 synthetic homes (d = 64, 2 layers, batch 64, chance = 4.16), InfoNCE at steps 0/100/200/300:
+
+| Game | Contrastive | Masked-attribute loss |
+|---|---|---|
+| Paper | 2.01 → 0.17 → 0.11 → 0.06 (collapses) | — |
+| Fixed | 3.44 → 1.38 → 1.22 → 1.09 (still learning) | 3.11 → 1.31 → 0.93 → 0.67 |
+
+To run it with a live progress view (pretraining steps, ETA, loss curve with a collapse warning, results table as homes finish): `.venv/Scripts/python scripts/domusfm_train.py start`; `watch` re-attaches and `stop` stops it.
+
+The loss not collapsing is necessary but not sufficient. Success means pretrained beats w/o pretrain on the held-out homes, which needs the corpus run. On real data the loss should stay well above 0.01; if it still drops below about 0.05, raise the masking to 0.5–0.6 or set `homes_per_batch: 1`.
+
+#### Result: DomusFM with the fixes, 77-home pretraining (finished 2026-09-25)
+
+The fixes work. The contrastive loss stayed at 0.70–0.82 for all 40,000 steps, and pretrained now beats w/o pretrain in 26 of 28 settings. Mean difference over the 7 targets (pretrained − w/o PT): ADL 5 % **+0.076** (was −0.050), ADL 30 % **+0.059** (was −0.068), Next-30 5 % **+0.053** (was −0.009), Next-30 30 % **+0.030** (was +0.002). The w/o-pretrain baseline barely moved (ADL 5 % 0.441 vs 0.435), so the gain comes from pretraining. Full tables, per-fold spread and timings: [results/domusfm_corpus_fixed/results.md](../results/domusfm_corpus_fixed/results.md).
 
 Next, on request: the strong-masking DomusFM run, and HomeFM variant E at 8.0M (`configs/homefm_corpus.yaml`) and size-matched at 28.6M (`configs/homefm_corpus_384.yaml`).
 
