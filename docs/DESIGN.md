@@ -457,7 +457,7 @@ flowchart LR
 - **In the paper:** §4.3 uses masking only as augmentation for in-batch InfoNCE.
 - **Example A:** motion sensors fire ON and then OFF a few seconds later. Hide the OFF and it is trivially guessed from the ON, so the attribute-masking stage mostly learns sensor mechanics.
 - **Example B:** two windows of a resident sleeping on different nights land in the same batch and are pushed apart as "different", although they are the same behaviour.
-- **What goes wrong:** pretraining carries little useful signal. In our real-data reproduction the contrastive loss fell to about 0.001 almost immediately, and pretraining gave no benefit on UCI B or hh101 ([DOMUSFM_REPRODUCTION.md](DOMUSFM_REPRODUCTION.md), §8.0).
+- **What goes wrong:** pretraining carries little useful signal. In our 77-home reproduction the contrastive loss fell to about 0.001 almost immediately, and pretraining lowered activity F1 on 6 of 7 held-out homes (mean −0.050 at 5 % labels). Making the game harder (same-home negatives, clock jitter, stronger masking on both views, a projector, a masked-attribute loss) turned this into a gain in 26 of 28 settings (mean +0.076), which confirms the diagnosis ([LIMITATIONS_AND_REMEDIES.md](LIMITATIONS_AND_REMEDIES.md), L11; [DOMUSFM_REPRODUCTION.md](DOMUSFM_REPRODUCTION.md)).
 - **How HomeFM fixes it:** harder and more useful games: predict the next event and when it happens; hide large structured chunks (a time block, a device, a room, a modality) and predict their meaning (JEPA); align with language using a loss that allows many matches (SigLIP). The choice is tested, not assumed, in the A–F comparison (§8.2, §8.3).
 
 #### What DomusFM does well, and we keep
@@ -1933,7 +1933,7 @@ flowchart LR
 | 7 | Learns sensor IDs | "M003" means nothing in another home | Predict the device's **description** ("stove in kitchen") |
 | 8 | No link to language | Hide-and-guess never teaches what "guest arrived" means | Align with text (Stage 3) |
 
-**Evidence from our real-data runs** ([DOMUSFM_REPRODUCTION.md](DOMUSFM_REPRODUCTION.md)) is consistent with problems 1 and 3. DomusFM's contrastive loss fell to about 0.001 almost immediately, even on the 27M-event corpus. Pretraining gave no benefit on UCI B or hh101, and lowered hh101 activity F1 at 5 % labels (0.49 vs 0.57 without pretraining).
+**Evidence from our real-data runs** ([DOMUSFM_REPRODUCTION.md](DOMUSFM_REPRODUCTION.md)) is consistent with problems 1 and 3. DomusFM's contrastive loss fell to about 0.001 almost immediately, even on the 27M-event corpus. Pretraining lowered activity F1 on 6 of 7 held-out homes (mean 0.385 vs 0.435 without pretraining at 5 % labels). With a harder game on the same corpus (same-home negatives, clock jitter, 40 % masking on both views, a projector, a masked-attribute loss), the loss stayed at 0.70–0.82 and pretraining helped in 26 of 28 settings (mean activity F1 0.517 vs 0.441). The fixed DomusFM is therefore the baseline HomeFM must beat.
 
 #### The proposed recipe: four stages
 
