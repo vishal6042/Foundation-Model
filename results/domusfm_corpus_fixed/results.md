@@ -122,7 +122,8 @@ On an idle GPU, pretraining takes about 70 minutes.
 
 | File | Contents |
 |---|---|
-| `slides/slides.html` | Slide deck of this experiment (open in a browser); `slides/src/` holds the per-slide source |
+| `slides/DomusFM_results.pptx` | Slide deck of this experiment, PowerPoint (editable text, tables and native charts) |
+| `slides/slides.html` | The same deck as a web page (open in a browser); `slides/src/` holds the per-slide source and the PowerPoint generator |
 | `SUMMARY.md` | Plain-language summary: the problem, the fixes, the improvement |
 | `results.md` | This write-up |
 | `results.json` | Every result per held-out home, task, label fraction and fold, plus the pretraining loss history |
