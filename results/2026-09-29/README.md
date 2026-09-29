@@ -15,14 +15,14 @@ Start with [domusfm_corpus_clean/SUMMARY.md](domusfm_corpus_clean/SUMMARY.md). T
 
 ## HomeFM design deck (`homefm_slides/`)
 
-A 58-slide deck on HomeFM: goals and use cases, DomusFM as the baseline (now with two run 3 slides), its 11 limitations with HomeFM's remedy for each, the system and model architecture, pretraining (why DomusFM's attribute and event masking are dropped, which use cases they would struggle with, and HomeFM's three games), the path from model outputs to answers, and the data, evaluation, deployment and roadmap plan. Content comes from [docs/DESIGN.md](../../docs/DESIGN.md), [docs/LIMITATIONS_AND_REMEDIES.md](../../docs/LIMITATIONS_AND_REMEDIES.md), [docs/DOMUSFM_REPRODUCTION.md](../../docs/DOMUSFM_REPRODUCTION.md) and the run 3 results above.
+A 62-slide deck on HomeFM: goals and use cases, DomusFM as the baseline (now with six run 3 slides, 11–16: headline, the five pretrained models, which model helped most and why, per-home gains, the paper comparison and the overall findings), its 11 limitations with HomeFM's remedy for each, the system and model architecture, pretraining (why DomusFM's attribute and event masking are dropped, which use cases they would struggle with, and HomeFM's three games), the path from model outputs to answers, and the data, evaluation, deployment and roadmap plan. Content comes from [docs/DESIGN.md](../../docs/DESIGN.md), [docs/LIMITATIONS_AND_REMEDIES.md](../../docs/LIMITATIONS_AND_REMEDIES.md), [docs/DOMUSFM_REPRODUCTION.md](../../docs/DOMUSFM_REPRODUCTION.md) and the run 3 results above.
 
 | Path | What it is |
 |---|---|
 | `homefm_slides/project/deck.json` | Deck index: title, slide order, the 7 sections, fonts |
 | `homefm_slides/project/slides/*.html` | One file per slide (1920×1080, inline styles, the Claude Slides artifact format) |
 | `homefm_slides/build.py` | Generator that writes both; the run 3 slides read `domusfm_corpus_clean/results.json`: `python results/2026-09-29/homefm_slides/build.py` |
-| `homefm_slides/HomeFM_architecture_and_design.pptx` | The same 58 slides as a PowerPoint file, with editable text and shapes and the speaker notes. Opens offline in PowerPoint, Keynote, Google Slides or LibreOffice |
+| `homefm_slides/HomeFM_architecture_and_design.pptx` | The same 62 slides as a PowerPoint file, with editable text and shapes, native charts and the speaker notes. Opens offline in PowerPoint, Keynote, Google Slides or LibreOffice |
 | `homefm_slides/build_pptx.js` | Regenerates the PPTX from `project/` (lays each slide out in headless Chromium, then writes native shapes): `npm install pptxgenjs playwright`, then `node results/2026-09-29/homefm_slides/build_pptx.js`. Run it after `build.py` |
 
 To present from a local copy of the repo, open `homefm_slides/HomeFM_architecture_and_design.pptx`. The online version is a private Claude Slides artifact (https://claude.ai/artifact/CPBCKTGsYnNGiCrKMBGBQ5); share it from its Share menu, or export PDF / PowerPoint from there. The HTML files here are its source and use the artifact's elements (`x-shape`, `x-icon`), so they are not meant to be opened directly in a browser.

@@ -94,6 +94,10 @@ function extract() {
       items.push({ type: "arrow", kind: el.getAttribute("kind"), ...box(r), fill: rgb(cs.backgroundColor) });
       return;
     }
+    if (el.hasAttribute("data-chart")) {
+      items.push({ type: "chart", ...box(r), spec: JSON.parse(el.getAttribute("data-chart")) });
+      return;
+    }
     if (el.tagName === "X-ICON") {
       el.setAttribute("data-icon", String(iconId));
       items.push({ type: "icon", id: iconId++, ...box(r) });
@@ -154,6 +158,26 @@ function textObjects(runs) {
   return out;
 }
 
+// A chart block in the slide HTML (painted bars) becomes a native, editable PowerPoint bar chart.
+function addChart(pres, slide, it) {
+  const { spec } = it;
+  const data = spec.series.map((s) => ({ name: s.name, labels: spec.categories, values: s.values }));
+  const multi = spec.series.length > 1;
+  slide.addChart(pres.charts.BAR, data, {
+    x: inch(it.x), y: inch(it.y), w: inch(it.w), h: inch(it.h),
+    barDir: spec.horizontal ? "bar" : "col", barGrouping: "clustered", barGapWidthPct: multi ? 40 : 60,
+    catAxisOrientation: spec.horizontal ? "maxMin" : "minMax", catAxisLabelPos: "low",
+    valAxisMinVal: spec.min, valAxisMaxVal: spec.max, valAxisMajorUnit: spec.step, valAxisLabelFormatCode: "0.00",
+    chartColors: spec.series.map((s) => s.color.replace("#", "")),
+    showValue: true, dataLabelPosition: "outEnd", dataLabelFormatCode: spec.fmt || "+0.00;-0.00;0.00",
+    dataLabelFontSize: 11, dataLabelColor: "3D4757", dataLabelFontFace: "Arial",
+    catAxisLabelFontSize: 13, catAxisLabelColor: "14213D", catAxisLabelFontFace: "Arial", catAxisLineShow: false,
+    valAxisLabelFontSize: 11, valAxisLabelColor: "5B6472", valAxisLabelFontFace: "Arial", valAxisLineShow: false,
+    valGridLine: { color: "E3E0D7", size: 0.75 }, catGridLine: { style: "none" },
+    showLegend: spec.legend ?? multi, legendPos: "t", legendFontSize: 12, legendFontFace: "Arial", legendColor: "3D4757",
+  });
+}
+
 function addItem(pres, slide, it, iconPngs) {
   if (it.type === "box") {
     const half = it.bw / 2;
@@ -170,6 +194,8 @@ function addItem(pres, slide, it, iconPngs) {
     const shape = it.kind === "arrow-down" ? pres.shapes.DOWN_ARROW : pres.shapes.RIGHT_ARROW;
     slide.addShape(shape, { x: inch(it.x), y: inch(it.y), w: inch(it.w), h: inch(it.h),
       fill: { color: it.fill || "9AA3B2" }, line: { type: "none" } });
+  } else if (it.type === "chart") {
+    addChart(pres, slide, it);
   } else if (it.type === "icon") {
     slide.addImage({ data: "image/png;base64," + iconPngs[it.id], x: inch(it.x), y: inch(it.y), w: inch(it.w), h: inch(it.h) });
   } else if (it.type === "text") {

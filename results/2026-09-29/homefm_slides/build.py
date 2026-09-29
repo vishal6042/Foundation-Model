@@ -250,6 +250,137 @@ add("run3", head("DomusFM, the baseline", "Run 3: cleaned data, the paper's test
     + p("Changes from run 2: repeated ON/ON states removed (paper Appendix A, 10.1 % of events), Kasteren A/C and MuRAL added, each paper test set pretrained on the others plus 77 CASAS homes. Pretrained activity scores on the 7 shared homes barely move (0.530 vs 0.517 at 5 %); next-30 is about 0.02 lower because cleaning changes what the next 30 events are.", 24, MUTED),
     notes="Full tables: results/2026-09-29/domusfm_corpus_clean/comparison.md. Run took 10.1 h on one RTX 4090, 5 pretraining runs of 40,000 steps.")
 
+# ---- run 3: the five pretrained models, which one helped most, per-home gains, overall findings
+C_A, C_B = "#1E5AA8", "#C46A1B"   # chart series; validated with the dataviz palette checker on CARD
+GRID, ZERO = "#E3E0D7", "#9AA3B2"
+PAPER_SETS = ["uci_b", "kasteren_a", "kasteren_c", "mural"]
+CASAS_TEST = ["hh101", "hh103", "hh105", "hh110", "hh119", "hh122"]
+NICE = {"uci_b": "UCI B", "kasteren_a": "Kasteren A", "kasteren_c": "Kasteren C", "mural": "MuRAL"}
+SETTINGS = [("adl", "5%"), ("adl", "30%"), ("next30", "5%"), ("next30", "30%")]
+
+
+def gain(h, t, pct):
+    return r3(RUN3, h, t, pct) - r3(RUN3, h, t, pct, "w/o Pretrain")
+
+
+def sg(v, nd=3):
+    return ("+" if v >= 0 else "−") + f"{abs(v):.{nd}f}"
+
+
+def hbars(rows, series, scale, neg_px, pos_px, row_h, bar_h, label_w, value_w, ticks, spec):
+    """Horizontal bar chart from painted boxes. rows: ("header", text) or (label, [value per series], value text).
+    spec (JSON) lets build_pptx.js swap the whole block for a native PowerPoint chart."""
+    rcol = f"height:{row_h}px; flex:none; display:flex; flex-direction:column; justify-content:center; gap:2px"
+    labels, negs, poss, vals = [], [], [], []
+    for r in rows:
+        if r[0] == "header":
+            labels.append(f'<div style="{rcol}; align-items:flex-end"><p style="font-size:24px; font-weight:600; color:{MUTED}; text-align:right">{r[1]}</p></div>')
+            negs.append(f'<div style="{rcol}"></div>'); poss.append(f'<div style="{rcol}"></div>'); vals.append(f'<div style="{rcol}"></div>')
+            continue
+        name, values, vtext = r
+        labels.append(f'<div style="{rcol}; align-items:flex-end"><p style="font-size:24px; color:{INK}; text-align:right">{name}</p></div>')
+        nb, pb = [], []
+        for v, (_, c) in zip(values, series):
+            w = round(abs(v) * scale)
+            bar = f'<div style="flex:none; width:{max(w, 2)}px; height:{bar_h}px; background:{c}; border-radius:{{r}}"></div>'
+            blank = f'<div style="flex:none; height:{bar_h}px"></div>'
+            pb.append(bar.replace("{r}", "0 4px 4px 0") if v >= 0 else blank)
+            nb.append(bar.replace("{r}", "4px 0 0 4px") if v < 0 else blank)
+        negs.append(f'<div style="{rcol}; align-items:flex-end">{"".join(nb)}</div>')
+        poss.append(f'<div style="{rcol}; align-items:flex-start">{"".join(pb)}</div>')
+        vals.append(f'<div style="{rcol}"><p style="font-size:24px; color:{BODY}">{vtext}</p></div>')
+    step = ticks[1][0] * scale
+    grid_bg = (f"repeating-linear-gradient(90deg, transparent 0px, transparent {step - 2:g}px, {GRID} {step - 2:g}px, {GRID} {step:g}px)")
+    colw = lambda w, extra="": f'display:flex; flex-direction:column; flex:none; width:{w}px{extra}'
+    body = (f'<div style="display:flex; gap:16px">'
+            f'<div style="{colw(label_w)}">{"".join(labels)}</div>'
+            + (f'<div style="{colw(neg_px)}">{"".join(negs)}</div>' if neg_px else "")
+            + f'<div style="{colw(pos_px)}; border-left:2px solid {ZERO}; background:{grid_bg}">{"".join(poss)}</div>'
+            f'<div style="{colw(value_w)}">{"".join(vals)}</div></div>')
+    tick_row = (f'<div style="display:flex"><div style="flex:none; width:{label_w + 16 + neg_px - 10}px"></div>'
+                + "".join(f'<p style="flex:none; width:{step:g}px; font-size:24px; color:{MUTED}">{t}</p>' for _, t in ticks) + "</div>")
+    spec_attr = html.escape(json.dumps(spec), quote=True)
+    return f'<div data-chart="{spec_attr}" style="display:flex; flex-direction:column; gap:6px">{body}{tick_row}</div>'
+
+
+def legend(series, note=""):
+    items = "".join(f'<div style="display:flex; gap:10px; align-items:center"><div style="flex:none; width:28px; height:18px; background:{c}; border-radius:4px"></div>'
+                    f'<p style="font-size:24px; color:{BODY}">{n}</p></div>' for n, c in series)
+    return f'<div style="display:flex; gap:32px; align-items:center">{items}{p(note, 24, MUTED) if note else ""}</div>'
+
+
+# Per pretrained model: the homes it was tested on, its mean gain over all of their settings, and its wins.
+MODELS = [("uci_b", "UCI B model", ["uci_b"]), ("kasteren_a", "Kasteren A model", ["kasteren_a"]),
+          ("kasteren_c", "Kasteren C model", ["kasteren_c"]), ("mural", "MuRAL model", ["mural"]),
+          ("casas_test", "CASAS model", CASAS_TEST)]
+PRE_EVENTS = {"uci_b": 24_586_445, "kasteren_a": 24_588_475, "kasteren_c": 24_546_463, "mural": 24_582_632, "casas_test": 24_591_111}  # train.log
+mstats = {}
+for key, name, homes in MODELS:
+    gs = [gain(h, t, pct) for h in homes for t, pct in SETTINGS]
+    last = RUN3[homes[0]]["pretrain_history"][-1]
+    mstats[key] = {"name": name, "mean": sum(gs) / len(gs), "wins": sum(g > 0 for g in gs), "n": len(gs), "loss": last["contrastive"]}
+losses = [m["loss"] for m in mstats.values()]
+
+others = lambda k: ", ".join(NICE[x] for x in PAPER_SETS if x != k)
+mrows = [(f"{i + 1} · {mstats[k]['name']}", f"77 CASAS homes + {others(k) if k != 'casas_test' else 'all 4 paper datasets'}",
+          NICE.get(k, "6 CASAS homes: hh101, 103, 105, 110, 119, 122"), f"{PRE_EVENTS[k] / 1e6:.1f} M", f"{mstats[k]['loss']:.2f}")
+         for i, (k, _, _) in enumerate(MODELS)]
+add("run3-models", head("DomusFM, the baseline", "Run 3 trained five pretrained models, one per test group", DOM)
+    + table(["Pretrained model", "Pretrained on (unlabelled)", "Fine-tuned and tested on", "Events seen", "Loss at end"], mrows,
+            [18, 35, 25, 11, 11], hl=[4])
+    + row(card(h3("Why five") + p("The paper's rule: a test dataset never appears in its own pretraining, but the other paper datasets do. "
+                                  "So homes with cupboard, fridge and flush sensors have similar homes in pretraining (run 2 had one CASAS-only model).", 24)),
+          card(h3("Near-twins") + p(f"The 77 CASAS homes are about 95 % of every model's batches, and all five end at the same loss "
+                                    f"({min(losses):.2f}–{max(losses):.2f}). Differences in results come from the <b>test homes</b>, not from one model being better trained.", 24)), gap=24),
+    notes="Each model: 40,000 steps (20,000 attribute masking + 20,000 event masking), about 68 min on one RTX 4090. "
+          "Loss at end = contrastive loss at the last logged step. Model 5 is shared by the six CASAS test homes, which are never pretrained on. "
+          "Config: configs/domusfm_corpus_clean.yaml (pretrain_groups).")
+
+ranked = sorted(mstats.values(), key=lambda m: -m["mean"])
+brows = [(m["name"], [m["mean"]], f"{sg(m['mean'])} · helped {m['wins']} of {m['n']}") for m in ranked]
+bspec = {"type": "bar", "horizontal": True, "categories": [m["name"] for m in ranked],
+         "series": [{"name": "Mean gain from pretraining", "values": [round(m["mean"], 4) for m in ranked], "color": C_A}],
+         "min": 0, "max": 0.14, "step": 0.02, "fmt": "+0.000"}
+best_cards = [
+    (OK, "Biggest gain: UCI B model",
+     f"Activity {sg(gain('uci_b', 'adl', '5%'), 2)} / {sg(gain('uci_b', 'adl', '30%'), 2)} (5 % / 30 % labels); Kasteren A close behind with the single biggest gain, "
+     f"{sg(gain('kasteren_a', 'adl', '30%'), 2)}. <b>Why:</b> the two smallest test sets (4,666 and 2,636 events): from scratch, so few labels give only 0.26–0.28, "
+     f"so pretrained features fill the gap."),
+    (HOME, "Most consistent: CASAS model",
+     f"Helped {mstats['casas_test']['wins']} of {mstats['casas_test']['n']} settings on 6 homes, and the only model that helps next-30 on every home it was tested on "
+     f"(+0.01 to +0.07). <b>Why:</b> its test homes look like its pretraining data (CASAS style sensors, about 95 % of batches), so it also learned their event order."),
+    (DOM, "Smallest gain: Kasteren C model",
+     f"{sg(mstats['kasteren_c']['mean'])} on average. <b>Why:</b> no room to improve. 83 % of its events are “go to bed”, so even the untrained model scores 0.85. "
+     f"Its top absolute score (0.88) says little about the model."),
+]
+add("run3-best", head("DomusFM, the baseline", "Which model helped most: UCI B and Kasteren A gained most, CASAS was steadiest", DOM)
+    + p("Mean gain from pretraining per model (pretrained − no pretraining, F1), over both tasks and both label amounts", 24, INK, "; font-weight:600")
+    + hbars(brows, [("Mean gain", C_A)], 4400, 0, 616, 44, 26, 250, 330,
+            [(0, "0"), (0.02, "0.02"), (0.04, "0.04"), (0.06, "0.06"), (0.08, "0.08"), (0.10, "0.10"), (0.12, "0.12")], bspec)
+    + row(*[card(h3(t, c, 28) + p(d, 24)) for c, t, d in best_cards], gap=20),
+    notes="Gains are averaged over activity and next-30 at 5 % and 30 % labels (4 settings per home; the CASAS model covers 6 homes, 24 settings). "
+          "Pretrained models are near-identical, so 'best model' means where pretraining paid off most. Source: results/2026-09-29/domusfm_corpus_clean/results.json.")
+
+hrows, cats, adl_g, nxt_g = [], [], [], []
+for grp, homes in (("4 paper datasets", PAPER_SETS), ("6 CASAS homes", CASAS_TEST)):
+    hrows.append(("header", grp))
+    for h in homes:
+        a = (gain(h, "adl", "5%") + gain(h, "adl", "30%")) / 2
+        n = (gain(h, "next30", "5%") + gain(h, "next30", "30%")) / 2
+        hrows.append((NICE.get(h, h), [a, n], f"{sg(a, 2)} · {sg(n, 2)}"))
+        cats.append(NICE.get(h, h)); adl_g.append(round(a, 2)); nxt_g.append(round(n, 2))
+pspec = {"type": "bar", "horizontal": True, "categories": cats, "min": -0.05, "max": 0.35, "step": 0.05, "legend": False, "fmt": "+0.00;-0.00;0.00",
+         "series": [{"name": "Activity recognition", "values": adl_g, "color": C_A}, {"name": "Next-30 prediction", "values": nxt_g, "color": C_B}]}
+add("run3-perhome", head("DomusFM, the baseline", "Per home: activity gains everywhere; next-30 gains only on CASAS homes", DOM)
+    + legend([("Activity recognition", C_A), ("Next-30 prediction", C_B)], "Gain from pretraining, mean of 5 % and 30 % labels")
+    + row(hbars(hrows, [("Activity", C_A), ("Next-30", C_B)], 2000, 100, 700, 42, 18, 190, 200,
+                [(0, "0"), (0.1, "0.1"), (0.2, "0.2"), (0.3, "0.3")], pspec),
+          card(p(f"<b>Activity:</b> every home gains; the small paper datasets gain most (UCI B, Kasteren A, MuRAL {sg(min(adl_g[0], adl_g[1], adl_g[3]), 2)} to {sg(max(adl_g[0], adl_g[1], adl_g[3]), 2)}).", 24)
+               + p(f"<b>Next-30:</b> the six CASAS homes gain {sg(min(nxt_g[4:]), 2)} to {sg(max(nxt_g[4:]), 2)}; the four paper datasets stay near zero.", 24)
+               + p("<b>Why:</b> predicting the next events needs a home's own event order. The CASAS test homes resemble the model's pretraining data; the paper datasets are small and unlike CASAS homes.", 24),
+               flex="1", gap=16), gap=24),
+    notes="Values right of each row: activity gain · next-30 gain, each the mean of the 5 % and 30 % label settings. Per-setting tables: results/2026-09-29/domusfm_corpus_clean/comparison.md.")
+
 pap = [("uci_b", "UCI B"), ("kasteren_a", "Kasteren A"), ("kasteren_c", "Kasteren C"), ("mural", "MuRAL")]
 PAPER_ADL = {"uci_b": (0.38, 0.60), "kasteren_a": (0.48, 0.68), "kasteren_c": (0.59, 0.81), "mural": (0.60, 0.80)}
 prow = []
@@ -265,6 +396,31 @@ add("run3-paper", head("DomusFM, the baseline", "Against the paper: pretraining 
           card(p("<b>Lower absolute scores come from the test, not the model:</b> with random folds, which let near-copies of test windows into training (likely the paper's protocol), Kasteren A reaches 0.82 and MuRAL 0.79 at 30 % (paper: 0.68 and 0.80).", 24)),
           card(p("<b>Caveats:</b> Kasteren C looks high because 83 % of events are “go to bed” (even untrained: 0.86). Next-30 gains on these small sets are near zero (paper: +0.15 to +0.25).", 24)), gap=20),
     notes="Random-fold diagnostic reuses run 3's pretrained backbones for UCI B, Kasteren A and MuRAL; only the fold split changes. Results in results/2026-09-29/domusfm_corpus_clean/random_folds/.")
+
+act_w = sum(gain(h, "adl", pct) > 0 for h in RUN3 for pct in ("5%", "30%"))
+nxt_w = sum(gain(h, "next30", pct) > 0 for h in RUN3 for pct in ("5%", "30%"))
+findings = [
+    ("1", "Pretraining works for activity recognition",
+     f"It helps in {act_w} of 20 activity settings, by +0.10 on average, at 5 % and at 30 % of labels. The paper's main claim holds."),
+    ("2", "It helps most where labels are scarce",
+     "The small paper datasets gain most: Kasteren A +0.33 and UCI B +0.30 at 30 % labels. The UCI B model has the biggest average gain."),
+    ("3", "It does little for next-30 prediction",
+     f"It helps in {nxt_w} of 20 next-30 settings, only +0.04 / +0.01 on average, and about zero on the paper datasets. Only CASAS homes gain."),
+    ("4", "The five models are equally good",
+     "Same data (95 % CASAS batches) and the same final loss. Differences come from the test homes: size, labels and how CASAS-like they are."),
+    ("5", "Our test is stricter than the paper's",
+     "Time-ordered folds. With the paper's likely random folds, Kasteren A reaches 0.82 and MuRAL 0.79 (paper 0.68 and 0.80)."),
+    ("6", "Kasteren C and one-run caveats",
+     "Kasteren C is easy (83 % “go to bed”). One run per setting, 3 folds: differences under about 0.03 on one home are noise."),
+]
+add("run3-findings", head("DomusFM, the baseline", "Run 3 overall findings", DOM)
+    + grid([card(f'<p style="font-family:{FH}; font-size:40px; font-weight:700; line-height:1; color:{DOM}">{n}</p>' + h3(t, INK, 28) + p(d, 24), pad=22, gap=8)
+            for n, t, d in findings], 3, 20)
+    + card(p("<b>What it means for HomeFM:</b> this run, the fixed and cleaned DomusFM, is the baseline to beat. Its gap is predicting what comes next, "
+             "which is exactly what HomeFM's game 1 (next event and when) trains.", 24, INK), bg=HOMET, border="#B9CDE8"),
+    notes="Counts and averages from results/2026-09-29/domusfm_corpus_clean/results.json; random-fold numbers from random_folds/results.json. "
+          "Plain-language write-up: results/2026-09-29/domusfm_corpus_clean/SUMMARY.md.")
+
 
 # ---------------------------------------------------------------- 3. Limitations
 lims = [("L1", "Closed label set", "Names only activities it has labels for", "Match minutes with words: any concept"),
