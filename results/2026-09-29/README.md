@@ -22,8 +22,10 @@ A 58-slide deck on HomeFM: goals and use cases, DomusFM as the baseline (now wit
 | `homefm_slides/project/deck.json` | Deck index: title, slide order, the 7 sections, fonts |
 | `homefm_slides/project/slides/*.html` | One file per slide (1920×1080, inline styles, the Claude Slides artifact format) |
 | `homefm_slides/build.py` | Generator that writes both; the run 3 slides read `domusfm_corpus_clean/results.json`: `python results/2026-09-29/homefm_slides/build.py` |
+| `homefm_slides/HomeFM_architecture_and_design.pptx` | The same 58 slides as a PowerPoint file, with editable text and shapes and the speaker notes. Opens offline in PowerPoint, Keynote, Google Slides or LibreOffice |
+| `homefm_slides/build_pptx.js` | Regenerates the PPTX from `project/` (lays each slide out in headless Chromium, then writes native shapes): `npm install pptxgenjs playwright`, then `node results/2026-09-29/homefm_slides/build_pptx.js`. Run it after `build.py` |
 
-The presentable version is a private Claude Slides artifact (https://claude.ai/artifact/CPBCKTGsYnNGiCrKMBGBQ5); share it from its Share menu, or export PDF / PowerPoint from there. The HTML files here are its source and use the artifact's elements (`x-shape`, `x-icon`), so they are not meant to be opened directly in a browser.
+To present from a local copy of the repo, open `homefm_slides/HomeFM_architecture_and_design.pptx`. The online version is a private Claude Slides artifact (https://claude.ai/artifact/CPBCKTGsYnNGiCrKMBGBQ5); share it from its Share menu, or export PDF / PowerPoint from there. The HTML files here are its source and use the artifact's elements (`x-shape`, `x-icon`), so they are not meant to be opened directly in a browser.
 
 ## Code, notebook and docs (committed earlier today, elsewhere in the repo)
 
