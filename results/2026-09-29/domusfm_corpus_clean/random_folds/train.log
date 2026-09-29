@@ -1,0 +1,44 @@
+[domusfm] cleaning: 28,120,516 -> 25,287,344 events (10.1% removed)
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|##########| 103/103 [00:00<00:00, 5030.43it/s]
+F:\Foundation_Model\src\homefm\data\text_encoder.py:64: FutureWarning: The `get_sentence_embedding_dimension` method has been renamed to `get_embedding_dimension`.
+  self.dim = self._model.get_sentence_embedding_dimension()
+[domusfm] device=cuda params=28,596,480 datasets=uci_b(4666 ev, 11 cls), kasteren_a(2636 ev, 8 cls), kasteren_c(44648 ev, 18 cls), mural(8479 ev, 27 cls), hh101(192507 ev, 35 cls), hh103(112102 ev, 33 cls), hh105(117784 ev, 34 cls), hh110(81078 ev, 32 cls), hh119(81974 ev, 33 cls), hh122(110788 ev, 34 cls), hh102(235022 ev, 36 cls), hh104(262930 ev, 36 cls), hh106(162426 ev, 37 cls), hh107(162271 ev, 28 cls), hh108(211453 ev, 34 cls), hh109(305826 ev, 35 cls), hh111(174172 ev, 35 cls), hh112(380189 ev, 34 cls), hh113(2057236 ev, 35 cls), hh114(108043 ev, 35 cls), hh115(1337072 ev, 36 cls), hh116(340968 ev, 35 cls), hh117(581491 ev, 33 cls), hh118(141028 ev, 31 cls), hh120(189283 ev, 35 cls), hh121(97668 ev, 38 cls), hh123(89860 ev, 33 cls), hh124(11478 ev, 24 cls), hh125(177792 ev, 35 cls), hh126(86207 ev, 33 cls), hh127(47411 ev, 30 cls), hh128(315778 ev, 32 cls), hh129(120596 ev, 33 cls), hh130(106626 ev, 28 cls), ihs06(305530 ev, 29 cls), ihs07(443062 ev, 30 cls), ihs08(448537 ev, 33 cls), ihs09(753105 ev, 34 cls), ihs11(435668 ev, 28 cls), mn50(76841 ev, 33 cls), mn51(136315 ev, 28 cls), mn57(184578 ev, 26 cls), mn61(167477 ev, 32 cls), mn71(132686 ev, 31 cls), mn77(211241 ev, 30 cls), mn82(60561 ev, 26 cls), mn83(376034 ev, 35 cls), mv001(3174311 ev, 1 cls), mva001(157458 ev, 27 cls), mva002(282725 ev, 27 cls), mva003(419356 ev, 26 cls), mva004(138724 ev, 26 cls), rw101(67950 ev, 32 cls), rw103(109714 ev, 31 cls), rw104(171456 ev, 38 cls), rw105(97394 ev, 34 cls), rw106(113758 ev, 30 cls), rw107(87907 ev, 34 cls), rw110(128920 ev, 35 cls), tm001(248167 ev, 33 cls), tm002(664741 ev, 26 cls), tm003(209089 ev, 28 cls), tm004(796740 ev, 36 cls), tm005(272779 ev, 34 cls), tm006(186122 ev, 36 cls), tm007(74873 ev, 33 cls), tm008(125382 ev, 31 cls), tm009(190726 ev, 16 cls), tm010(391352 ev, 24 cls), tm011(571015 ev, 34 cls), tm013(295906 ev, 17 cls), tm014(163110 ev, 31 cls), tm015(160436 ev, 18 cls), tm016(71271 ev, 26 cls), tm017(89069 ev, 32 cls), tm018(140582 ev, 23 cls), tm019(105944 ev, 29 cls), tm020(162570 ev, 32 cls), tm021(187839 ev, 25 cls), tm022(302768 ev, 33 cls), tm026(265355 ev, 31 cls), tm029(168025 ev, 29 cls), tm035(170031 ev, 31 cls), tm037(143656 ev, 30 cls), tm038(424622 ev, 27 cls), milan(322706 ev, 1 cls), aruba(1241672 ev, 1 cls)
+
+=== held-out: uci_b ===
+[domusfm] pretraining group 'uci_b': excludes uci_b
+[domusfm] reusing pretrained_uci_b.pt
+  adl      5% DomusFM       0.537 ± 0.026
+  adl      5% w/o Pretrain  0.303 ± 0.020
+  adl     30% DomusFM       0.683 ± 0.014
+  adl     30% w/o Pretrain  0.429 ± 0.021
+  next30   5% DomusFM       0.728 ± 0.004
+  next30   5% w/o Pretrain  0.719 ± 0.001
+  next30  30% DomusFM       0.818 ± 0.007
+  next30  30% w/o Pretrain  0.789 ± 0.003
+
+=== held-out: kasteren_a ===
+[domusfm] pretraining group 'kasteren_a': excludes kasteren_a
+[domusfm] reusing pretrained_kasteren_a.pt
+  adl      5% DomusFM       0.445 ± 0.061
+  adl      5% w/o Pretrain  0.285 ± 0.077
+  adl     30% DomusFM       0.815 ± 0.011
+  adl     30% w/o Pretrain  0.523 ± 0.015
+  next30   5% DomusFM       0.547 ± 0.013
+  next30   5% w/o Pretrain  0.540 ± 0.018
+  next30  30% DomusFM       0.698 ± 0.004
+  next30  30% w/o Pretrain  0.682 ± 0.008
+
+=== held-out: mural ===
+[domusfm] pretraining group 'mural': excludes mural
+[domusfm] reusing pretrained_mural.pt
+  adl      5% DomusFM       0.522 ± 0.017
+  adl      5% w/o Pretrain  0.290 ± 0.008
+  adl     30% DomusFM       0.789 ± 0.002
+  adl     30% w/o Pretrain  0.558 ± 0.015
+  next30   5% DomusFM       0.648 ± 0.005
+  next30   5% w/o Pretrain  0.618 ± 0.017
+  next30  30% DomusFM       0.731 ± 0.006
+  next30  30% w/o Pretrain  0.712 ± 0.009
+
+[domusfm] saved F:\Foundation_Model\runs\domusfm_clean_randomfolds\results.json and results.md

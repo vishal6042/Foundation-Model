@@ -224,9 +224,47 @@ stats = [("0.0005", "contrastive loss by step 5,000 of 40,000 with the paper's g
 add("domus-results", head("DomusFM, the baseline", "Our reproduction: the paper's game collapsed; a harder game fixed it", DOM)
     + row(*[card(f'<p style="font-family:{FH}; font-size:96px; font-weight:700; line-height:1; color:{c}">{n}</p>' + p(t, 26), pad=32, gap=16) for n, t, c in stats], gap=28)
     + card(p("<b>The six fixes:</b> wrong answers from the same home, ±15-min clock jitter, both copies masked at 40 %, a separate projector head, a fill-in-the-blanks loss, gentler fine-tuning. "
-             "<b>Run 3 is training now:</b> cleaned data (paper Appendix A), the paper's own Kasteren and MuRAL test sets, leave-one-dataset-out pretraining.", 24), bg=CARD)
+             "<b>Run 3 (29 Sep):</b> cleaned data (paper Appendix A), the paper's own Kasteren and MuRAL test sets, leave-one-dataset-out pretraining: pretraining now wins <b>34 of 40</b> settings (next two slides).", 24), bg=CARD)
     + p("<b>Lesson for HomeFM:</b> the pretraining game decides what the model learns.", 28, INK),
     notes="Numbers from results/domusfm_corpus and results/domusfm_corpus_fixed. The fixed DomusFM is the baseline HomeFM must beat.")
+
+RUN3 = json.loads((ROOT.parent / "domusfm_corpus_clean" / "results.json").read_text(encoding="utf-8"))
+RF = json.loads((ROOT.parent / "domusfm_corpus_clean" / "random_folds" / "results.json").read_text(encoding="utf-8"))
+
+
+def r3(res, h, t, pct, name="DomusFM"):
+    return res[h]["results"][f"{t}|{pct}|{name}"]["mean"]
+
+
+gain_rows = [("Activity, 5 % labels", "+0.097", "+0.068", "+0.140", "10 / 10", "+0.076"),
+             ("Activity, 30 % labels", "+0.099", "+0.027", "+0.208", "9 / 10", "+0.059"),
+             ("Next-30, 5 % labels", "+0.038", "+0.055", "+0.014", "9 / 10", "+0.053"),
+             ("Next-30, 30 % labels", "+0.009", "+0.027", "−0.017", "6 / 10", "+0.030")]
+r3stats = [("34 of 40", "settings where pretraining helps (10 test homes × 2 tasks × 2 label amounts)", OK),
+           ("10 of 10", "homes where pretraining helps activity recognition with 5 % of labels", OK),
+           ("+0.087", "activity gain at 5 % labels on the 7 homes shared with run 2 (run 2: +0.076)", HOME)]
+add("run3", head("DomusFM, the baseline", "Run 3: cleaned data, the paper's test sets, one pretraining per test set", DOM)
+    + row(*[card(f'<p style="font-family:{FH}; font-size:80px; font-weight:700; line-height:1; color:{c}">{n}</p>' + p(t, 24), pad=28, gap=12) for n, t, c in r3stats], gap=24)
+    + p("Mean gain from pretraining (pretrained − no pretraining), 3 time-ordered folds", 24, INK, "; font-weight:600")
+    + table(["Setting", "All 10 homes", "6 CASAS homes", "4 paper datasets", "Pretraining wins", "Run 2 (7 homes)"], gain_rows, [24, 15, 15, 16, 15, 15])
+    + p("Changes from run 2: repeated ON/ON states removed (paper Appendix A, 10.1 % of events), Kasteren A/C and MuRAL added, each paper test set pretrained on the others plus 77 CASAS homes. Pretrained activity scores on the 7 shared homes barely move (0.530 vs 0.517 at 5 %); next-30 is about 0.02 lower because cleaning changes what the next 30 events are.", 24, MUTED),
+    notes="Full tables: results/2026-09-29/domusfm_corpus_clean/comparison.md. Run took 10.1 h on one RTX 4090, 5 pretraining runs of 40,000 steps.")
+
+pap = [("uci_b", "UCI B"), ("kasteren_a", "Kasteren A"), ("kasteren_c", "Kasteren C"), ("mural", "MuRAL")]
+PAPER_ADL = {"uci_b": (0.38, 0.60), "kasteren_a": (0.48, 0.68), "kasteren_c": (0.59, 0.81), "mural": (0.60, 0.80)}
+prow = []
+for h, nm in pap:
+    rf = f"{r3(RF, h, 'adl', '5%'):.2f} / {r3(RF, h, 'adl', '30%'):.2f}" if h in RF else "not run"
+    prow.append((nm, f"{r3(RUN3, h, 'adl', '5%'):.2f} / {r3(RUN3, h, 'adl', '30%'):.2f}",
+                 f"{r3(RUN3, h, 'adl', '5%', 'w/o Pretrain'):.2f} / {r3(RUN3, h, 'adl', '30%', 'w/o Pretrain'):.2f}", rf,
+                 f"{PAPER_ADL[h][0]:.2f} / {PAPER_ADL[h][1]:.2f}"))
+add("run3-paper", head("DomusFM, the baseline", "Against the paper: pretraining helps, our test is stricter", DOM)
+    + p("Activity recognition, weighted F1, 5 % / 30 % labels", 24, INK, "; font-weight:600")
+    + table(["Dataset", "Ours, pretrained", "Ours, no pretraining", "Ours, random folds", "Paper (Table 1)"], prow, [18, 21, 22, 20, 19])
+    + row(card(p("<b>Pretraining helps at least as much as in the paper:</b> Kasteren A +0.33 at 30 % labels (paper +0.11), MuRAL +0.19 (paper +0.04), UCI B +0.30 (paper +0.24).", 24)),
+          card(p("<b>Lower absolute scores come from the test, not the model:</b> with random folds, which let near-copies of test windows into training (likely the paper's protocol), Kasteren A reaches 0.82 and MuRAL 0.79 at 30 % (paper: 0.68 and 0.80).", 24)),
+          card(p("<b>Caveats:</b> Kasteren C looks high because 83 % of events are “go to bed” (even untrained: 0.86). Next-30 gains on these small sets are near zero (paper: +0.15 to +0.25).", 24)), gap=20),
+    notes="Random-fold diagnostic reuses run 3's pretrained backbones for UCI B, Kasteren A and MuRAL; only the fold split changes. Results in results/2026-09-29/domusfm_corpus_clean/random_folds/.")
 
 # ---------------------------------------------------------------- 3. Limitations
 lims = [("L1", "Closed label set", "Names only activities it has labels for", "Match minutes with words: any concept"),
@@ -532,7 +570,7 @@ add("evidence", head("Pretraining · why HomeFM drops it", "What our runs showed
     + row(col(p("Activity F1, 5 % labels, paper's game, 77 homes", 24, INK, "; font-weight:600"),
               table_w(720, ["Held-out home", "Pretrained", "No pretraining"], ev, [40, 30, 30], hl=[7]), gap=12, extra="; width:720px; flex:none"),
           col(p("<b>Loss collapse:</b> 2.35 → about 0.0005 within 5,000 of 40,000 steps. Next-30 prediction: no difference either way.", 26),
-              p("<b>Patching the game works for activities:</b> with six fixes, pretraining wins 26 of 28 settings (activity F1 at 5 % labels: 0.517 vs 0.441).", 26),
+              p("<b>Patching the game works for activities:</b> with six fixes, pretraining wins 26 of 28 settings (activity F1 at 5 % labels: 0.517 vs 0.441); run 3 on 10 homes: 34 of 40.", 26),
               p("<b>But the fixed game still trains none of:</b> timing, surprise, per-minute meaning, robustness to a missing device, language.", 26, DOM),
               p("<b>So HomeFM replaces the game instead of patching it.</b> Masking is not thrown away: game 2 hides big structured chunks and must recover them; our DomusFM fix's fill-in-the-blanks loss points the same way.", 26, INK), gap=20, extra="; flex:1"), gap=48))
 
@@ -749,7 +787,7 @@ designed = ["Detector tag vocabulary; audio and vision experts", "KV-cache strea
 add("status", head("Plan", "Build status today")
     + row(card(pill("Built", OKT, OK) + col(*[p("• " + b, 24, INK) for b in built], gap=10), bg=CARD),
           card(pill("Designed, not built", DOMT, DOM) + col(*[p("• " + d, 24, INK) for d in designed], gap=10), bg=CARD), gap=28)
-    + card(p("<b>Not run yet:</b> the HomeFM corpus runs (variant E at 8.0M and size-matched 28.6M). We are finishing DomusFM first.", 26, INK), bg=HOMET, border="#B9CDE8"))
+    + card(p("<b>DomusFM baseline done:</b> run 3 finished 29 Sep (34 of 40 settings helped by pretraining). <b>Not run yet:</b> the HomeFM corpus runs (variant E at 8.0M and size-matched 28.6M).", 26, INK), bg=HOMET, border="#B9CDE8"))
 
 risks = [("Pretraining data too small or uniform", "Simulated homes, more CASAS homes, pilots, distillation"),
          ("“One occurrence” is ambiguous", "Per-concept episode rules in the ontology; feedback tuning"),
@@ -761,7 +799,7 @@ add("risks", head("Plan", "Risks and open decisions")
     + table(["Risk", "Mitigation"], risks, [40, 60])
     + p("<b>Open decisions:</b> edge-only vs edge + cloud · which hub ecosystem first (Home Assistant, Matter) · 2–3 deep v1 domains · access to pilot homes · free-text messages as tags or text tokens · keep the device registry outside the model file · detector tag field in the Home Token.", 24))
 
-nxt = [("1", "Finish DomusFM run 3", "Cleaned data, the paper's Kasteren and MuRAL test sets, leave-one-dataset-out pretraining. Training now."),
+nxt = [("1", "DomusFM run 3: done", "Pretraining helps in 34 of 40 settings on 10 homes. The fixed, cleaned DomusFM is the baseline to beat."),
        ("2", "HomeFM E corpus runs", "Games 1 + 2 at 8.0M, then size-matched 28.6M, same homes and fine-tuning as DomusFM."),
        ("3", "Keep E only if", "Its loss falls gradually and pretrained E beats E without pretraining, especially at 5 % labels."),
        ("4", "Then F and G", "Add game 3 where captions allow; test the five refinements against the measured collapse.")]
@@ -784,7 +822,9 @@ sections = {
     "s6": {"description": "From model outputs to answers: episodes, engines, the agent", "start": "episodes"},
     "s7": {"description": "Data, evaluation, deployment, roadmap, status and next steps", "start": "data"},
 }
-deck = {"v": 4, "createdOnFiles": {"v": 1, "at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")},
+_idx = ROOT / "project" / "deck.json"
+_created = json.loads(_idx.read_text(encoding="utf-8")).get("createdOnFiles") if _idx.exists() else None
+deck = {"v": 4, "createdOnFiles": _created or {"v": 1, "at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")},
         "title": "HomeFM: architecture and design", "cover": "cover", "order": order, "sections": sections,
         "faces": {"space-grotesk": {"family": "Space Grotesk", "href": "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400..700&display=swap"},
                   "ibm-plex-sans": {"family": "IBM Plex Sans", "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"},

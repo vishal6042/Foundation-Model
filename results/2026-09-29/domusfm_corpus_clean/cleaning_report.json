@@ -1,0 +1,785 @@
+{
+ "uci_b": {
+  "events_in": 4668,
+  "sensors_in": 12,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 2,
+  "events_out": 4666,
+  "sensors_out": 12
+ },
+ "kasteren_a": {
+  "events_in": 2636,
+  "sensors_in": 14,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 0,
+  "events_out": 2636,
+  "sensors_out": 14
+ },
+ "kasteren_c": {
+  "events_in": 45400,
+  "sensors_in": 21,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 752,
+  "events_out": 44648,
+  "sensors_out": 21
+ },
+ "mural": {
+  "events_in": 8543,
+  "sensors_in": 23,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 64,
+  "events_out": 8479,
+  "sensors_out": 23
+ },
+ "hh101": {
+  "events_in": 222858,
+  "sensors_in": 7,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 30351,
+  "events_out": 192507,
+  "sensors_out": 7
+ },
+ "hh103": {
+  "events_in": 112474,
+  "sensors_in": 8,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 372,
+  "events_out": 112102,
+  "sensors_out": 8
+ },
+ "hh105": {
+  "events_in": 147074,
+  "sensors_in": 10,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 29290,
+  "events_out": 117784,
+  "sensors_out": 10
+ },
+ "hh110": {
+  "events_in": 98686,
+  "sensors_in": 11,
+  "dropped_type_events": 26,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 17582,
+  "events_out": 81078,
+  "sensors_out": 10
+ },
+ "hh119": {
+  "events_in": 92740,
+  "sensors_in": 8,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 10766,
+  "events_out": 81974,
+  "sensors_out": 8
+ },
+ "hh122": {
+  "events_in": 129936,
+  "sensors_in": 8,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 19148,
+  "events_out": 110788,
+  "sensors_out": 8
+ },
+ "hh102": {
+  "events_in": 281505,
+  "sensors_in": 12,
+  "dropped_type_events": 71,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 46412,
+  "events_out": 235022,
+  "sensors_out": 10
+ },
+ "hh104": {
+  "events_in": 344700,
+  "sensors_in": 10,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 81770,
+  "events_out": 262930,
+  "sensors_out": 10
+ },
+ "hh106": {
+  "events_in": 202546,
+  "sensors_in": 11,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 40120,
+  "events_out": 162426,
+  "sensors_out": 11
+ },
+ "hh107": {
+  "events_in": 203300,
+  "sensors_in": 8,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 41029,
+  "events_out": 162271,
+  "sensors_out": 8
+ },
+ "hh108": {
+  "events_in": 285795,
+  "sensors_in": 10,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 74342,
+  "events_out": 211453,
+  "sensors_out": 10
+ },
+ "hh109": {
+  "events_in": 399200,
+  "sensors_in": 11,
+  "dropped_type_events": 47,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 93327,
+  "events_out": 305826,
+  "sensors_out": 10
+ },
+ "hh111": {
+  "events_in": 221284,
+  "sensors_in": 10,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 47112,
+  "events_out": 174172,
+  "sensors_out": 10
+ },
+ "hh112": {
+  "events_in": 468586,
+  "sensors_in": 13,
+  "dropped_type_events": 64,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 88333,
+  "events_out": 380189,
+  "sensors_out": 11
+ },
+ "hh113": {
+  "events_in": 2282244,
+  "sensors_in": 10,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 225008,
+  "events_out": 2057236,
+  "sensors_out": 10
+ },
+ "hh114": {
+  "events_in": 135195,
+  "sensors_in": 9,
+  "dropped_type_events": 94,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 27058,
+  "events_out": 108043,
+  "sensors_out": 8
+ },
+ "hh115": {
+  "events_in": 1601811,
+  "sensors_in": 12,
+  "dropped_type_events": 1701,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 263038,
+  "events_out": 1337072,
+  "sensors_out": 10
+ },
+ "hh116": {
+  "events_in": 388627,
+  "sensors_in": 11,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 47659,
+  "events_out": 340968,
+  "sensors_out": 11
+ },
+ "hh117": {
+  "events_in": 771229,
+  "sensors_in": 9,
+  "dropped_type_events": 1040,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 188698,
+  "events_out": 581491,
+  "sensors_out": 7
+ },
+ "hh118": {
+  "events_in": 179599,
+  "sensors_in": 11,
+  "dropped_type_events": 65,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 38506,
+  "events_out": 141028,
+  "sensors_out": 10
+ },
+ "hh120": {
+  "events_in": 219381,
+  "sensors_in": 9,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 30098,
+  "events_out": 189283,
+  "sensors_out": 9
+ },
+ "hh121": {
+  "events_in": 122648,
+  "sensors_in": 9,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 24980,
+  "events_out": 97668,
+  "sensors_out": 9
+ },
+ "hh123": {
+  "events_in": 106836,
+  "sensors_in": 7,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 16976,
+  "events_out": 89860,
+  "sensors_out": 7
+ },
+ "hh124": {
+  "events_in": 13374,
+  "sensors_in": 9,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 1896,
+  "events_out": 11478,
+  "sensors_out": 9
+ },
+ "hh125": {
+  "events_in": 216228,
+  "sensors_in": 7,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 38436,
+  "events_out": 177792,
+  "sensors_out": 7
+ },
+ "hh126": {
+  "events_in": 111801,
+  "sensors_in": 5,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 25594,
+  "events_out": 86207,
+  "sensors_out": 5
+ },
+ "hh127": {
+  "events_in": 50843,
+  "sensors_in": 6,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 3432,
+  "events_out": 47411,
+  "sensors_out": 6
+ },
+ "hh128": {
+  "events_in": 402570,
+  "sensors_in": 7,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 86792,
+  "events_out": 315778,
+  "sensors_out": 7
+ },
+ "hh129": {
+  "events_in": 160678,
+  "sensors_in": 6,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 40082,
+  "events_out": 120596,
+  "sensors_out": 6
+ },
+ "hh130": {
+  "events_in": 121598,
+  "sensors_in": 6,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 14972,
+  "events_out": 106626,
+  "sensors_out": 6
+ },
+ "ihs06": {
+  "events_in": 305693,
+  "sensors_in": 27,
+  "dropped_type_events": 116,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 47,
+  "events_out": 305530,
+  "sensors_out": 26
+ },
+ "ihs07": {
+  "events_in": 443436,
+  "sensors_in": 33,
+  "dropped_type_events": 317,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 57,
+  "events_out": 443062,
+  "sensors_out": 32
+ },
+ "ihs08": {
+  "events_in": 448662,
+  "sensors_in": 31,
+  "dropped_type_events": 86,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 39,
+  "events_out": 448537,
+  "sensors_out": 30
+ },
+ "ihs09": {
+  "events_in": 753603,
+  "sensors_in": 23,
+  "dropped_type_events": 414,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 84,
+  "events_out": 753105,
+  "sensors_out": 22
+ },
+ "ihs11": {
+  "events_in": 435820,
+  "sensors_in": 18,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 152,
+  "events_out": 435668,
+  "sensors_out": 18
+ },
+ "mn50": {
+  "events_in": 99928,
+  "sensors_in": 9,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 23087,
+  "events_out": 76841,
+  "sensors_out": 9
+ },
+ "mn51": {
+  "events_in": 175521,
+  "sensors_in": 8,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 39206,
+  "events_out": 136315,
+  "sensors_out": 8
+ },
+ "mn57": {
+  "events_in": 256360,
+  "sensors_in": 7,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 71782,
+  "events_out": 184578,
+  "sensors_out": 7
+ },
+ "mn61": {
+  "events_in": 170468,
+  "sensors_in": 37,
+  "dropped_type_events": 84,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 2907,
+  "events_out": 167477,
+  "sensors_out": 36
+ },
+ "mn71": {
+  "events_in": 132698,
+  "sensors_in": 20,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 12,
+  "events_out": 132686,
+  "sensors_out": 20
+ },
+ "mn77": {
+  "events_in": 231641,
+  "sensors_in": 37,
+  "dropped_type_events": 24,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 20376,
+  "events_out": 211241,
+  "sensors_out": 36
+ },
+ "mn82": {
+  "events_in": 62859,
+  "sensors_in": 30,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 2298,
+  "events_out": 60561,
+  "sensors_out": 30
+ },
+ "mn83": {
+  "events_in": 383651,
+  "sensors_in": 26,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 7617,
+  "events_out": 376034,
+  "sensors_out": 26
+ },
+ "mv001": {
+  "events_in": 3368850,
+  "sensors_in": 8,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 194539,
+  "events_out": 3174311,
+  "sensors_out": 8
+ },
+ "mva001": {
+  "events_in": 195155,
+  "sensors_in": 9,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 37697,
+  "events_out": 157458,
+  "sensors_out": 9
+ },
+ "mva002": {
+  "events_in": 292995,
+  "sensors_in": 46,
+  "dropped_type_events": 10235,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 35,
+  "events_out": 282725,
+  "sensors_out": 24
+ },
+ "mva003": {
+  "events_in": 419378,
+  "sensors_in": 21,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 22,
+  "events_out": 419356,
+  "sensors_out": 21
+ },
+ "mva004": {
+  "events_in": 138763,
+  "sensors_in": 21,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 39,
+  "events_out": 138724,
+  "sensors_out": 21
+ },
+ "rw101": {
+  "events_in": 72624,
+  "sensors_in": 29,
+  "dropped_type_events": 4661,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 13,
+  "events_out": 67950,
+  "sensors_out": 15
+ },
+ "rw103": {
+  "events_in": 116886,
+  "sensors_in": 39,
+  "dropped_type_events": 7154,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 18,
+  "events_out": 109714,
+  "sensors_out": 20
+ },
+ "rw104": {
+  "events_in": 178390,
+  "sensors_in": 38,
+  "dropped_type_events": 6931,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 3,
+  "events_out": 171456,
+  "sensors_out": 19
+ },
+ "rw105": {
+  "events_in": 97503,
+  "sensors_in": 18,
+  "dropped_type_events": 95,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 14,
+  "events_out": 97394,
+  "sensors_out": 17
+ },
+ "rw106": {
+  "events_in": 113834,
+  "sensors_in": 23,
+  "dropped_type_events": 76,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 0,
+  "events_out": 113758,
+  "sensors_out": 22
+ },
+ "rw107": {
+  "events_in": 88686,
+  "sensors_in": 19,
+  "dropped_type_events": 779,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 0,
+  "events_out": 87907,
+  "sensors_out": 18
+ },
+ "rw110": {
+  "events_in": 134244,
+  "sensors_in": 46,
+  "dropped_type_events": 5290,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 34,
+  "events_out": 128920,
+  "sensors_out": 24
+ },
+ "tm001": {
+  "events_in": 248180,
+  "sensors_in": 17,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 13,
+  "events_out": 248167,
+  "sensors_out": 17
+ },
+ "tm002": {
+  "events_in": 806980,
+  "sensors_in": 9,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 142239,
+  "events_out": 664741,
+  "sensors_out": 9
+ },
+ "tm003": {
+  "events_in": 209095,
+  "sensors_in": 15,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 6,
+  "events_out": 209089,
+  "sensors_out": 15
+ },
+ "tm004": {
+  "events_in": 796745,
+  "sensors_in": 31,
+  "dropped_type_events": 1,
+  "merged_case_sensors": 3,
+  "dropped_repeat_events": 4,
+  "events_out": 796740,
+  "sensors_out": 27
+ },
+ "tm005": {
+  "events_in": 272834,
+  "sensors_in": 19,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 55,
+  "events_out": 272779,
+  "sensors_out": 19
+ },
+ "tm006": {
+  "events_in": 222154,
+  "sensors_in": 9,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 36032,
+  "events_out": 186122,
+  "sensors_out": 9
+ },
+ "tm007": {
+  "events_in": 84429,
+  "sensors_in": 8,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 9556,
+  "events_out": 74873,
+  "sensors_out": 8
+ },
+ "tm008": {
+  "events_in": 156884,
+  "sensors_in": 9,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 31502,
+  "events_out": 125382,
+  "sensors_out": 9
+ },
+ "tm009": {
+  "events_in": 207550,
+  "sensors_in": 8,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 16824,
+  "events_out": 190726,
+  "sensors_out": 8
+ },
+ "tm010": {
+  "events_in": 391352,
+  "sensors_in": 22,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 0,
+  "events_out": 391352,
+  "sensors_out": 22
+ },
+ "tm011": {
+  "events_in": 571037,
+  "sensors_in": 29,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 22,
+  "events_out": 571015,
+  "sensors_out": 29
+ },
+ "tm013": {
+  "events_in": 295910,
+  "sensors_in": 13,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 4,
+  "events_out": 295906,
+  "sensors_out": 13
+ },
+ "tm014": {
+  "events_in": 163224,
+  "sensors_in": 21,
+  "dropped_type_events": 113,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 1,
+  "events_out": 163110,
+  "sensors_out": 20
+ },
+ "tm015": {
+  "events_in": 160436,
+  "sensors_in": 14,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 0,
+  "events_out": 160436,
+  "sensors_out": 14
+ },
+ "tm016": {
+  "events_in": 71452,
+  "sensors_in": 23,
+  "dropped_type_events": 166,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 15,
+  "events_out": 71271,
+  "sensors_out": 22
+ },
+ "tm017": {
+  "events_in": 90637,
+  "sensors_in": 26,
+  "dropped_type_events": 1567,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 1,
+  "events_out": 89069,
+  "sensors_out": 25
+ },
+ "tm018": {
+  "events_in": 140755,
+  "sensors_in": 17,
+  "dropped_type_events": 173,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 0,
+  "events_out": 140582,
+  "sensors_out": 16
+ },
+ "tm019": {
+  "events_in": 106632,
+  "sensors_in": 19,
+  "dropped_type_events": 687,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 1,
+  "events_out": 105944,
+  "sensors_out": 18
+ },
+ "tm020": {
+  "events_in": 162747,
+  "sensors_in": 28,
+  "dropped_type_events": 156,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 21,
+  "events_out": 162570,
+  "sensors_out": 27
+ },
+ "tm021": {
+  "events_in": 187859,
+  "sensors_in": 22,
+  "dropped_type_events": 20,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 0,
+  "events_out": 187839,
+  "sensors_out": 21
+ },
+ "tm022": {
+  "events_in": 303018,
+  "sensors_in": 20,
+  "dropped_type_events": 239,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 11,
+  "events_out": 302768,
+  "sensors_out": 19
+ },
+ "tm026": {
+  "events_in": 265427,
+  "sensors_in": 27,
+  "dropped_type_events": 72,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 0,
+  "events_out": 265355,
+  "sensors_out": 26
+ },
+ "tm029": {
+  "events_in": 168025,
+  "sensors_in": 27,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 0,
+  "events_out": 168025,
+  "sensors_out": 27
+ },
+ "tm035": {
+  "events_in": 170173,
+  "sensors_in": 30,
+  "dropped_type_events": 141,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 1,
+  "events_out": 170031,
+  "sensors_out": 29
+ },
+ "tm037": {
+  "events_in": 143711,
+  "sensors_in": 19,
+  "dropped_type_events": 55,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 0,
+  "events_out": 143656,
+  "sensors_out": 18
+ },
+ "tm038": {
+  "events_in": 424816,
+  "sensors_in": 20,
+  "dropped_type_events": 158,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 36,
+  "events_out": 424622,
+  "sensors_out": 19
+ },
+ "milan": {
+  "events_in": 421392,
+  "sensors_in": 11,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 98686,
+  "events_out": 322706,
+  "sensors_out": 11
+ },
+ "aruba": {
+  "events_in": 1602821,
+  "sensors_in": 11,
+  "dropped_type_events": 0,
+  "merged_case_sensors": 0,
+  "dropped_repeat_events": 361149,
+  "events_out": 1241672,
+  "sensors_out": 11
+ }
+}

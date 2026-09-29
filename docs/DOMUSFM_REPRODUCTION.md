@@ -183,7 +183,7 @@ The loss not collapsing is necessary but not sufficient. Success means pretraine
 
 The fixes work. The contrastive loss stayed at 0.70–0.82 for all 40,000 steps, and pretrained now beats w/o pretrain in 26 of 28 settings. Mean difference over the 7 targets (pretrained − w/o PT): ADL 5 % **+0.076** (was −0.050), ADL 30 % **+0.059** (was −0.068), Next-30 5 % **+0.053** (was −0.009), Next-30 30 % **+0.030** (was +0.002). The w/o-pretrain baseline barely moved (ADL 5 % 0.441 vs 0.435), so the gain comes from pretraining. Full tables, per-fold spread and timings: [results/domusfm_corpus_fixed/results.md](../results/domusfm_corpus_fixed/results.md).
 
-### Real datasets: run 3 (cleaned data, the paper's own test datasets, leave-one-dataset-out; started 2026-09-28)
+### Real datasets: run 3 (cleaned data, the paper's own test datasets, leave-one-dataset-out; finished 2026-09-29)
 
 Config `configs/domusfm_corpus_clean.yaml`; EDA and cleaning evidence in [notebooks/domusfm_eda.ipynb](../notebooks/domusfm_eda.ipynb) and [DATA.md](DATA.md) §3.6. Three changes from run 2, each checked against the paper; everything else (model, pretraining game and length, fine-tuning protocol) is unchanged so the 7 earlier targets compare directly:
 
@@ -196,6 +196,23 @@ Config `configs/domusfm_corpus_clean.yaml`; EDA and cleaning evidence in [notebo
 Checked and kept as in run 2: tasks ADL and next-30 (the two tasks of the paper's pretraining ablation, Tables 8–9), 5 % and 30 % labels, 10 epochs without early stopping (§6.1.3), labelled subset sampled at random from the training folds (§6.1.3), "Other" kept (§6.1.1), per-dataset oversampling in pretraining (§6.1.2), 30-event windows with stride 1 (§6.2.2). Time-contiguous folds stay (3 instead of the paper's 5, for time), so absolute scores remain stricter than the paper's.
 
 Next-30 after cleaning is a slightly different target (repeated states no longer count), so run 3 next-30 scores are not strictly comparable with run 2's; ADL labels are unchanged by cleaning.
+
+#### Result: run 3 (finished 2026-09-29)
+
+10.1 h on one RTX 4090 (5 pretraining runs of 40,000 steps; the contrastive loss stayed at 0.7–0.8 in all of them). **Pretraining wins 34 of 40 settings**, and ADL with 5 % labels on all 10 targets. Mean gain (pretrained − w/o pretrain):
+
+| Setting | All 10 | 6 CASAS targets | 4 paper datasets | Wins | Run 2 (7 targets) |
+|---|---|---|---|---|---|
+| ADL 5 % | +0.097 | +0.068 | +0.140 | 10 / 10 | +0.076 |
+| ADL 30 % | +0.099 | +0.027 | +0.208 | 9 / 10 | +0.059 |
+| Next-30 5 % | +0.038 | +0.055 | +0.014 | 9 / 10 | +0.053 |
+| Next-30 30 % | +0.009 | +0.027 | −0.017 | 6 / 10 | +0.030 |
+
+On the 7 targets shared with run 2, pretrained ADL is 0.530 vs 0.517 (5 %) and 0.530 vs 0.529 (30 %); next-30 is about 0.02 lower for both pretrained and scratch models because cleaning changes the target.
+
+Paper datasets, ADL 5 % / 30 %, pretrained (w/o pretrain): UCI B 0.48 / 0.56 (0.28 / 0.26), Kasteren A 0.33 / 0.60 (0.19 / 0.27), Kasteren C 0.88 / 0.87 (0.85 / 0.86), MuRAL 0.27 / 0.33 (0.08 / 0.14); paper 0.38 / 0.60, 0.48 / 0.68, 0.59 / 0.81, 0.60 / 0.80. Pretraining gains match or exceed the paper's (Kasteren A +0.33 vs +0.11 at 30 %; MuRAL +0.19 vs +0.04). A **random-fold diagnostic** (same pretrained backbones, `finetune.fold_mode: random`) lifts MuRAL to 0.52 / 0.79 and Kasteren A to 0.45 / 0.82, so the gap in absolute scores is mostly the stricter time-contiguous protocol. Kasteren C is easy (83 % "go to bed"). The paper's next-30 gain (+0.15 to +0.25) is **not reproduced** on the small paper datasets (about 0, even with random folds); on the CASAS targets pretraining helps next-30 by +0.01 to +0.07.
+
+Plain-language summary, all tables and the diagnostic: [results/2026-09-29/domusfm_corpus_clean/](../results/2026-09-29/domusfm_corpus_clean/SUMMARY.md).
 
 Next, on request: the strong-masking DomusFM run, and HomeFM variant E at 8.0M (`configs/homefm_corpus.yaml`) and size-matched at 28.6M (`configs/homefm_corpus_384.yaml`).
 
