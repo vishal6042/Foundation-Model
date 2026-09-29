@@ -281,21 +281,41 @@ def key(items):
     return f'<div style="display:flex; gap:28px; flex-wrap:wrap">{"".join(out)}</div>'
 
 
+step = lambda n, t, body: card(f'<p style="font-family:{FH}; font-size:40px; font-weight:700; line-height:1; color:{DOM}">{n}</p>' + h3(t, INK, 28) + body, gap=12)
+add("run1-game", head("DomusFM, the baseline", "Pretraining is a game: find your own window", DOM)
+    + p("Before it sees any labels, the model studies millions of unlabelled events by playing this game over and over.", 26, INK)
+    + row(step("1", "Take a window of 30 events", mono("18:29:04 fridge door OPEN<br>18:29:40 fridge door CLOSED<br>18:30:12 stove ON<br>… 30 events in all")),
+          arrow_r(),
+          step("2", "Make a copy and hide some of it", mono("18:29:04 fridge door ???<br>18:29:40 ???<br>18:30:12 stove ON<br>…")),
+          arrow_r(),
+          step("3", "Find the copy among 128", p("Mix the hidden copy with 127 other windows. The model must pick out its own copy. The other 127 are the wrong answers.", 24)),
+          gap=16)
+    + row(card(h3("Why play it") + p("No labels are needed. To win honestly, the model has to learn how homes behave, "
+                                     "for example that the stove usually comes on after the fridge.", 24)),
+          card(h3("The two numbers") + p("<b>30 events</b> = one window (from the paper). <b>128 windows</b> = one training round, called a batch "
+                                         "(our choice: the paper does not say).", 24)),
+          card(h3("The catch", DOM) + p("Like a photo quiz where every photo shows its date: you can match dates without looking at faces, "
+                                        "score 100 % and learn nothing. That is what happened in run 1.", 24), bg=DOMT, border="#E9C3A2"), gap=24),
+    notes="Technical terms: the game is contrastive pretraining with the InfoNCE loss; the 127 other windows of the batch are 'in-batch negatives' (paper §4.3). "
+          "Phase 1 hides single facts of 15 % of events (attribute masking); phase 2 hides 15 % of whole events (event masking). "
+          "Window of 30 events: paper §6.2.2. Batch size 128: not reported in the paper, our choice (configs/domusfm.yaml).")
+
 fix_rows = [
-    ("The wrong answers came from other homes, so sensor names alone gave the right one away", "Wrong answers now come from the same home"),
-    ("Every event carries its exact second: a fingerprint", "Shift each copy's clock by up to ±15 min"),
-    ("One copy was the untouched window, so 85 % of it matched exactly", "Hide 40 % of both copies"),
-    ("The game bent the model itself toward telling windows apart", "A small add-on plays the game, then is thrown away"),
-    ("Nothing hidden ever had to be guessed", "New task: fill in the blanks (hidden sensor, room, ON/OFF)"),
-    ("Fine-tuning moved the pretrained weights as fast as the new head", "Move pretrained weights gently, with a warm-up"),
+    ("1", "The windows came from different homes: sensor names gave it away", "Each round uses only 4 homes (32 windows each)"),
+    ("2", "Each event has its exact second; the copy had the same clock", "Shift each copy's clock by up to 15 min"),
+    ("3", "Only 15 % was hidden, in one copy: the two were 85 % the same", "Hide 40 %, in both copies"),
+    ("4", "The whole model turned into a matching machine", "A throwaway add-on plays the game"),
+    ("5", "It never had to guess what was hidden, only spot the match", "Fill in the blanks: fridge door ??? → OPEN"),
+    ("6", "Learning the real task later erased what pretraining taught", "Change pretrained knowledge slowly"),
 ]
-add("run1-fixes", head("DomusFM, the baseline", "Why run 1 failed: the model learned to cheat at its training game", DOM)
-    + card(p("<b>The game:</b> take a 30-event window, hide 15 % of it, then pick that hidden copy out of 128 windows. "
-             "<b>Run 1:</b> the model won the game after 1,000 of 40,000 steps, by using shortcuts, not by learning how people live. "
-             "Pretraining then made activity recognition <b>worse</b> in 6 of 7 homes.", 26, INK), flex="none", bg=DOMT, border="#E9C3A2")
-    + table(["How it cheated", "Our fix (run 2 onwards)"], fix_rows, [55, 45])
-    + p("<b>None of the six is in the paper.</b> It describes the game but not how much to hide, how batches are built or how fast to learn, "
-        "and it has no add-on or fill-in-the-blanks task. So from run 2 on we test a <b>fixed</b> DomusFM, not the paper's exact recipe.", 24, INK),
+add("run1-fixes", head("DomusFM, the baseline", "Run 1: the model cheated. Six clues we took away", DOM)
+    + p("Run 1 won the game after 1,000 of its 40,000 steps by using easy clues, not by learning routines. "
+        "It then recognised activities <b>worse</b> than a model with no pretraining, in 6 of 7 homes.", 26, INK)
+    + table(["#", "The easy clue it used", "How we took it away"], fix_rows, [5, 55, 40])
+    + row(card(h3("Did it work? Yes", OK) + p("Pretraining now helps in <b>26 of 28</b> settings (run 2) and <b>34 of 40</b> (run 3). "
+                                                "The loss chart on the next slide shows the difference.", 24), bg=OKT, border="#BFDCC8"),
+          card(h3("Not in the paper", DOM) + p("The paper describes the game but not these details, and has no fill-in-the-blanks task. "
+                                               "So from run 2 on we test an improved DomusFM, not the paper's exact recipe.", 24), bg=DOMT, border="#E9C3A2"), gap=24),
     notes="Technical names: 1 same-home negatives (homes_per_batch 4), 2 time jitter ±900 s, 3 both views masked at 0.4 with temperature 0.2, "
           "4 projection head, 5 masked-attribute prediction (mlm_weight 1), 6 backbone LR 5e-5, head LR 1e-3, 10 % warm-up. "
           "Details: docs/DOMUSFM_REPRODUCTION.md, 'Why pretraining did not help, and the fix'. Config: configs/domusfm_corpus_fixed.yaml.")
@@ -344,7 +364,7 @@ diff_cols = [
         "<b>Test on the paper's own datasets:</b> Kasteren A, Kasteren C, MuRAL",
         "<b>Leave each test dataset out</b> of its own pretraining (5 models)"]),
     (DOM, DOMT, "Our own changes", [
-        "<b>The six game fixes</b> (two slides back)",
+        "<b>The six game fixes</b> (slide 12)",
         "<b>Far more pretraining data:</b> 77 CASAS homes (the paper used 2)",
         "<b>6 extra test homes</b> from CASAS",
         "<b>Guessed settings</b> the paper does not give (28.6M vs 36.1M parameters)"]),
