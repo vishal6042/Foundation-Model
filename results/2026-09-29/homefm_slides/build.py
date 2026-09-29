@@ -236,6 +236,134 @@ def r3(res, h, t, pct, name="DomusFM"):
     return res[h]["results"][f"{t}|{pct}|{name}"]["mean"]
 
 
+# ---- why run 1 failed, the six fixes, the two training losses, and how we differ from the paper (plain words)
+C_A, C_B = "#1E5AA8", "#C46A1B"   # chart series; validated with the dataviz palette checker on CARD
+GRID, ZERO = "#E3E0D7", "#9AA3B2"
+RUN1 = json.loads((ROOT.parent.parent / "domusfm_corpus" / "results.json").read_text(encoding="utf-8"))
+GROUP_FIRST = ["uci_b", "kasteren_a", "kasteren_c", "mural", "hh101"]   # first target of each run 3 pretraining group
+
+
+def hist_xy(h):
+    return [(r["step"] + (20000 if r["phase"] == "event" else 0)) for r in h]
+
+
+def line_chart(series, xmax, ymax, yticks, xticks, W, H, spec, hlines=(), vlines=(), label=""):
+    """Line chart: an <svg> for the lines (no text inside, per the slide format) with <p> axis labels around it.
+    spec (JSON) lets build_pptx.js swap the whole block for a native PowerPoint line chart."""
+    ins = 17  # half a 24px label's line box, so y labels (space-between) line up with the gridlines
+    X = lambda x: x / xmax * W
+    Y = lambda y: ins + (1 - y / ymax) * (H - 2 * ins)
+    parts = [f'<line x1="0" y1="{Y(t):.1f}" x2="{W}" y2="{Y(t):.1f}" stroke="{GRID}" stroke-width="1.5"/>' for t, _ in yticks]
+    parts += [f'<line x1="{X(x):.1f}" y1="{ins}" x2="{X(x):.1f}" y2="{H - ins}" stroke="{ZERO}" stroke-width="2" stroke-dasharray="8 8"/>' for x in vlines]
+    parts += [f'<line x1="0" y1="{Y(y):.1f}" x2="{W}" y2="{Y(y):.1f}" stroke="{c}" stroke-width="2.5" stroke-dasharray="4 7"/>' for y, c in hlines]
+    for _, c, pts in series:
+        d = " ".join(f"{X(x):.1f},{Y(min(y, ymax)):.1f}" for x, y in pts)
+        parts.append(f'<polyline points="{d}" fill="none" stroke="{c}" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>')
+    svg = (f'<svg aria-label="{html.escape(label, quote=True)}" width="{W}" height="{H}" viewBox="0 0 {W} {H}" '
+           f'style="flex:none">{"".join(parts)}</svg>')
+    ylab = "".join(f'<p style="font-size:24px; line-height:34px; color:{MUTED}; text-align:right">{t}</p>' for _, t in reversed(yticks))
+    lw = 90
+    xlab = "".join(f'<p style="flex:none; width:{lw}px; font-size:24px; color:{MUTED}; text-align:center">{t}</p>' for _, t in xticks)
+    spec_attr = html.escape(json.dumps(spec), quote=True)
+    return (f'<div data-chart="{spec_attr}" style="display:flex; flex-direction:column; gap:4px">'
+            f'<div style="display:flex; gap:12px"><div style="flex:none; width:44px; height:{H}px; display:flex; flex-direction:column; '
+            f'justify-content:space-between">{ylab}</div>{svg}</div>'
+            f'<div style="display:flex"><div style="flex:none; width:{56 - lw // 2}px"></div>'
+            f'<div style="flex:none; width:{W + lw}px; display:flex; justify-content:space-between">{xlab}</div></div></div>')
+
+
+def key(items):
+    out = []
+    for name, c, dashed in items:
+        sw = (f'<div style="flex:none; width:32px; height:0px; border-top:3px dashed {c}"></div>' if dashed
+              else f'<div style="flex:none; width:32px; height:6px; background:{c}; border-radius:3px"></div>')
+        out.append(f'<div style="display:flex; gap:10px; align-items:center">{sw}<p style="font-size:24px; color:{BODY}">{name}</p></div>')
+    return f'<div style="display:flex; gap:28px; flex-wrap:wrap">{"".join(out)}</div>'
+
+
+fix_rows = [
+    ("The wrong answers came from other homes, so sensor names alone gave the right one away", "Wrong answers now come from the same home"),
+    ("Every event carries its exact second: a fingerprint", "Shift each copy's clock by up to ±15 min"),
+    ("One copy was the untouched window, so 85 % of it matched exactly", "Hide 40 % of both copies"),
+    ("The game bent the model itself toward telling windows apart", "A small add-on plays the game, then is thrown away"),
+    ("Nothing hidden ever had to be guessed", "New task: fill in the blanks (hidden sensor, room, ON/OFF)"),
+    ("Fine-tuning moved the pretrained weights as fast as the new head", "Move pretrained weights gently, with a warm-up"),
+]
+add("run1-fixes", head("DomusFM, the baseline", "Why run 1 failed: the model learned to cheat at its training game", DOM)
+    + card(p("<b>The game:</b> take a 30-event window, hide 15 % of it, then pick that hidden copy out of 128 windows. "
+             "<b>Run 1:</b> the model won the game after 1,000 of 40,000 steps, by using shortcuts, not by learning how people live. "
+             "Pretraining then made activity recognition <b>worse</b> in 6 of 7 homes.", 26, INK), flex="none", bg=DOMT, border="#E9C3A2")
+    + table(["How it cheated", "Our fix (run 2 onwards)"], fix_rows, [55, 45])
+    + p("<b>None of the six is in the paper.</b> It describes the game but not how much to hide, how batches are built or how fast to learn, "
+        "and it has no add-on or fill-in-the-blanks task. So from run 2 on we test a <b>fixed</b> DomusFM, not the paper's exact recipe.", 24, INK),
+    notes="Technical names: 1 same-home negatives (homes_per_batch 4), 2 time jitter ±900 s, 3 both views masked at 0.4 with temperature 0.2, "
+          "4 projection head, 5 masked-attribute prediction (mlm_weight 1), 6 backbone LR 5e-5, head LR 1e-3, 10 % warm-up. "
+          "Details: docs/DOMUSFM_REPRODUCTION.md, 'Why pretraining did not help, and the fix'. Config: configs/domusfm_corpus_fixed.yaml.")
+
+r1h = RUN1["uci_b"]["pretrain_history"]
+r1 = list(zip(hist_xy(r1h), [r["loss"] for r in r1h]))
+r3h = [RUN3[k]["pretrain_history"] for k in GROUP_FIRST]
+r3x = hist_xy(r3h[0])
+r3c = [sum(h[i]["contrastive"] for h in r3h) / len(r3h) for i in range(len(r3x))]
+r3m = [sum(h[i]["mlm"] for h in r3h) / len(r3h) for i in range(len(r3x))]
+CHANCE = 4.85   # ln 128: guessing among the 128 windows of a batch
+xt = [(0, "0"), (10000, "10k"), (20000, "20k"), (30000, "30k"), (40000, "40k")]
+steps_lbl = [f"{x // 1000}k" if x % 10000 == 0 else "" for x in r3x]
+match_spec = {"type": "line", "categories": steps_lbl, "min": 0, "max": 5, "step": 1, "legend": False, "fmt": "0.00",
+              "series": [{"name": "Run 1, paper's game", "values": [round(y, 4) for _, y in r1], "color": C_B},
+                         {"name": "Run 3, fixed game", "values": [round(y, 4) for y in r3c], "color": C_A},
+                         {"name": "Chance", "values": [CHANCE] * len(r3x), "color": ZERO}]}
+fill_spec = {"type": "line", "categories": steps_lbl, "min": 0, "max": 5, "step": 1, "legend": False, "fmt": "0.00",
+             "series": [{"name": "Run 3, fill-in-the-blanks", "values": [round(y, 4) for y in r3m], "color": C_A}]}
+yt = [(v, str(v)) for v in range(0, 6)]
+phase_row = lambda: (f'<div style="display:flex; gap:0"><div style="flex:none; width:56px"></div>'
+                     f'<p style="flex:none; width:350px; font-size:24px; color:{MUTED}; text-align:center">Phase 1: hide facts</p>'
+                     f'<p style="flex:none; width:350px; font-size:24px; color:{MUTED}; text-align:center">Phase 2: hide events</p></div>')
+chart_col = lambda title, chart, legend_html: col(h3(title, INK, 28), legend_html, chart, phase_row(), gap=10, extra="; flex:none; width:790px")
+add("run1-losses", head("DomusFM, the baseline", "The two training losses: run 1 stopped learning, the fixed game kept learning", DOM)
+    + row(chart_col("Matching loss: find your own window among 128",
+                    line_chart([("run1", C_B, r1), ("run3", C_A, list(zip(r3x, r3c)))], 40000, 5, yt, xt, 700, 300, match_spec,
+                               hlines=[(CHANCE, ZERO)], vlines=[20000], label="Matching loss: run 1 falls to zero by step 1,000; run 3 stays at 0.7 to 0.8"),
+                    key([("Run 1, paper's game", C_B, False), ("Run 3, fixed game", C_A, False), ("Chance 4.85", ZERO, True)])),
+          chart_col("Fill-in-the-blanks loss: guess what was hidden",
+                    line_chart([("run3", C_A, list(zip(r3x, r3m)))], 40000, 5, yt, xt, 700, 300, fill_spec,
+                               vlines=[20000], label="Fill-in-the-blanks loss: falls from 4.1 to about 0.2 in phase 1, 0.5 to 0.7 in phase 2"),
+                    key([("Run 3: hidden sensor, room and ON/OFF (not in run 1)", C_A, False)])), gap=84)
+    + row(card(p(f"<b>Matching:</b> 4.85 means pure guessing, 0 means never wrong. Run 1 hit {r1[1][1]:.3f} by step 1,000: the game was too easy "
+                 f"to teach anything. With the fixes it stays at {min(r3c[1:20] + r3c[21:]):.1f}–{max(r3c[1:20] + r3c[21:]):.1f}: hard enough to keep learning. "
+                 f"The jump at 20k is the switch to the harder phase-2 game.", 24)),
+          card(p(f"<b>Fill in the blanks:</b> lower means better guesses. It falls from {r3m[0]:.1f} to about {min(r3m[:20]):.1f} when single facts are hidden, "
+                 f"and sits at {min(r3m[21:]):.1f}–{max(r3m[21:]):.1f} when whole events are hidden (harder).", 24)), gap=84),
+    notes="Matching loss = the contrastive (InfoNCE) loss; fill-in-the-blanks = the masked-attribute loss added by fix 5. Run 1: results/domusfm_corpus "
+          "(one pretraining, logged every 1,000 steps). Run 3: mean of its five pretrained models, which are nearly identical; run 2 looks the same "
+          "(0.70–0.82). Chance = ln 128 = 4.85 for both. Phase 1 hides single facts (attribute masking); phase 2 hides whole events.")
+
+diff_cols = [
+    (OK, OKT, "From the paper (added in run 3)", [
+        "<b>Clean the data:</b> drop repeated ON/ON or OFF/OFF events (10 % of events)",
+        "<b>Test on the paper's own datasets:</b> Kasteren A, Kasteren C, MuRAL",
+        "<b>Leave each test dataset out</b> of its own pretraining (5 models)"]),
+    (DOM, DOMT, "Our own changes", [
+        "<b>The six game fixes</b> (two slides back)",
+        "<b>Far more pretraining data:</b> 77 CASAS homes (the paper used 2)",
+        "<b>6 extra test homes</b> from CASAS",
+        "<b>Guessed settings</b> the paper does not give (28.6M vs 36.1M parameters)"]),
+    (HOME, HOMET, "Stricter testing", [
+        "<b>Test on a later time</b> than training. The paper probably splits at random, which lets near-copies of test windows into training",
+        "<b>The 6 CASAS test homes</b> are never seen in any pretraining",
+        "<b>Random split only as a check</b>, to compare with the paper"]),
+]
+add("vs-paper", head("DomusFM, the baseline", "How our DomusFM differs from the paper, in plain words", DOM)
+    + row(*[card(pill(t, bgt, c) + col(*[p(x, 26, INK) for x in items], gap=16), gap=18) for c, bgt, t, items in diff_cols], gap=24)
+    + card(p("<b>What it means:</b> our absolute scores are lower than the paper's because our test is harder, not because the model is weaker. "
+             "The gain from pretraining for activity recognition, which the stricter test measures fairly, is as large as the paper's or larger on 3 of the 4 shared datasets.", 26, INK),
+           flex="none", bg=HOMET, border="#B9CDE8")
+    + p("<b>Smaller, to save time:</b> 3 test splits (paper 5), 5 % and 30 % labels (paper 5–30 %), next-30 only. "
+        "<b>Not done yet:</b> Orange4Home (email-only dataset), the clustering task, the paper's other baseline models.", 24),
+    notes="Paper: Fiori et al., arXiv 2602.01910. Full list with paper sections: docs/DOMUSFM_REPRODUCTION.md ('What follows the paper', 'Assumptions', run 3). "
+          "Why a later-time test is stricter: consecutive windows share 29 of 30 events, so a random split puts near-copies of each test window in training.")
+
+
 gain_rows = [("Activity, 5 % labels", "+0.097", "+0.068", "+0.140", "10 / 10", "+0.076"),
              ("Activity, 30 % labels", "+0.099", "+0.027", "+0.208", "9 / 10", "+0.059"),
              ("Next-30, 5 % labels", "+0.038", "+0.055", "+0.014", "9 / 10", "+0.053"),
@@ -251,8 +379,6 @@ add("run3", head("DomusFM, the baseline", "Run 3: cleaned data, the paper's test
     notes="Full tables: results/2026-09-29/domusfm_corpus_clean/comparison.md. Run took 10.1 h on one RTX 4090, 5 pretraining runs of 40,000 steps.")
 
 # ---- run 3: the five pretrained models, which one helped most, per-home gains, overall findings
-C_A, C_B = "#1E5AA8", "#C46A1B"   # chart series; validated with the dataviz palette checker on CARD
-GRID, ZERO = "#E3E0D7", "#9AA3B2"
 PAPER_SETS = ["uci_b", "kasteren_a", "kasteren_c", "mural"]
 CASAS_TEST = ["hh101", "hh103", "hh105", "hh110", "hh119", "hh122"]
 NICE = {"uci_b": "UCI B", "kasteren_a": "Kasteren A", "kasteren_c": "Kasteren C", "mural": "MuRAL"}

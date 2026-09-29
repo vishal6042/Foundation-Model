@@ -163,6 +163,18 @@ function addChart(pres, slide, it) {
   const { spec } = it;
   const data = spec.series.map((s) => ({ name: s.name, labels: spec.categories, values: s.values }));
   const multi = spec.series.length > 1;
+  if (spec.type === "line") {
+    slide.addChart(pres.charts.LINE, data, {
+      x: inch(it.x), y: inch(it.y), w: inch(it.w), h: inch(it.h),
+      chartColors: spec.series.map((s) => s.color.replace("#", "")), lineSize: 2.5, lineDataSymbol: "none",
+      valAxisMinVal: spec.min, valAxisMaxVal: spec.max, valAxisMajorUnit: spec.step, valAxisLabelFormatCode: "0",
+      catAxisLabelFrequency: 10, catAxisLabelFontSize: 12, catAxisLabelColor: "5B6472", catAxisLabelFontFace: "Arial",
+      valAxisLabelFontSize: 12, valAxisLabelColor: "5B6472", valAxisLabelFontFace: "Arial", valAxisLineShow: false,
+      valGridLine: { color: "E3E0D7", size: 0.75 }, catGridLine: { style: "none" },
+      showLegend: spec.legend ?? multi, legendPos: "t", legendFontSize: 12, legendFontFace: "Arial",
+    });
+    return;
+  }
   slide.addChart(pres.charts.BAR, data, {
     x: inch(it.x), y: inch(it.y), w: inch(it.w), h: inch(it.h),
     barDir: spec.horizontal ? "bar" : "col", barGrouping: "clustered", barGapWidthPct: multi ? 40 : 60,
